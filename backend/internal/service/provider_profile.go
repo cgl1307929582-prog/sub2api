@@ -82,7 +82,8 @@ func (p *ProviderProfile) DefaultBaseURL(mode, protocol string) string {
 
 // SupportsProtocol 报告指定接入模式是否提供该协议的原生端点。
 func (p *ProviderProfile) SupportsProtocol(mode, protocol string) bool {
-	return p.DefaultBaseURL(mode, protocol) != ""
+	_, supported := p.Endpoints(mode).BaseURLs[protocol]
+	return supported
 }
 
 // providerProfiles 是多协议 API Key 供应商的单一数据来源。新增同类供应商时在此
@@ -90,6 +91,13 @@ func (p *ProviderProfile) SupportsProtocol(mode, protocol string) bool {
 // 上游协议分流方式、Responses 路径约定与 IsMultiProtocolAPIKeyProvider 归属。
 // 默认端点需与前端 credentialsBuilder.ts 的预设保持一致。
 var providerProfiles = map[string]*ProviderProfile{
+	PlatformColab: {
+		Platform: PlatformColab, DefaultMode: "pool", Routing: ProviderRoutingByInbound,
+		Modes: map[string]ProviderEndpoints{"pool": {
+			// Empty default requires an operator-supplied bridge URL.
+			BaseURLs: map[string]string{APIProtocolChatCompletions: ""},
+		}},
+	},
 	PlatformDroid: {
 		Platform:         PlatformDroid,
 		DefaultMode:      AccountModeFactory,

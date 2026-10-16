@@ -1480,7 +1480,32 @@ export interface DroidQuotaInfo {
   stale: boolean
 }
 
+export interface ColabPoolInfo {
+  version: number
+  model_id: string
+  balance_cu: number | null
+  burn_cu_per_hour: number | null
+  used_cu_24h: number | null
+  accounts: number
+  eligible_accounts: number
+  ready: number
+  starting: number
+  auto_start: boolean
+  max_instances: number
+  idle_stop_minutes: number
+  observed_at: string
+  quota_updated_at: string | null
+  quota_stale: boolean
+  fetched_at: string
+  stale: boolean
+  instances: Array<{
+    id: number; state: string; gpu: string; running: number; waiting: number
+    tokens_per_second: number | null; created_at: string | null; last_active_at: string | null
+  }>
+}
+
 export interface AccountUsageInfo {
+  colab_pool?: ColabPoolInfo | null
   droid_quota?: DroidQuotaInfo | null
   source?: 'passive' | 'active' | 'cache'
   updated_at: string | null

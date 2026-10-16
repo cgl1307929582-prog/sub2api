@@ -1438,6 +1438,13 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
+		if acc.IsColab() {
+			for _, id := range acc.ColabModelIDs() {
+				modelSet[id] = struct{}{}
+			}
+			hasAnyMapping = true
+			continue
+		}
 		if acc.IsDroid() && acc.GetDroidModelCatalog() != nil {
 			for _, id := range acc.DroidModelIDs() {
 				modelSet[id] = struct{}{}

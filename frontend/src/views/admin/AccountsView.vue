@@ -738,7 +738,7 @@ const buildDefaultTodayStats = (): WindowStats => ({
 })
 
 const accountSupportsBatchUsage = (account: Account) => {
-  if (account.platform === 'droid') return account.type === 'apikey'
+  if (['droid', 'colab'].includes(account.platform)) return account.type === 'apikey'
   if (account.platform === 'anthropic') {
     return account.type === 'oauth' || account.type === 'setup-token'
   }
@@ -2257,7 +2257,7 @@ const handleProbeUpstreamBilling = async (account: Account) => {
 }
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
-  if (updatedAccount.platform === 'droid') {
+  if (['droid', 'colab'].includes(updatedAccount.platform)) {
     usageBatchCache.delete(updatedAccount.id)
     setUsageBatchState(updatedAccount.id, null, null)
     droidUsageRefreshTokens.value[updatedAccount.id] = (droidUsageRefreshTokens.value[updatedAccount.id] ?? 0) + 1

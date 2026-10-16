@@ -1,5 +1,18 @@
 export default {
     accounts: {
+    colab: {
+      apiKeyHint: '填写 Colab Pool 桥接地址和推理 API Key。模型同步与额度刷新不会启动 GPU；账号测试和推理会按 Pool 设置触发开机。',
+      balance: '算力余额', rate: '消耗速率', used: '近 24 小时消耗',
+      instances: '就绪 {ready} · 启动中 {starting} / 上限 {max}', accounts: '账号 {total} · 可新开机 {eligible}',
+      autoStart: '按需开机已启用', manualStart: '按需开机未启用', idleStop: '空闲 {minutes} 分钟后停止',
+      offline: 'GPU 当前未运行', coldStart: '首次推理可能需等待 10–15 分钟冷启动',
+      details: '实例详情', running: '运行 {running} · 排队 {waiting}',
+      updated: '状态采样：{time}', quotaUpdated: '额度采样：{time}',
+      stale: '状态查询失败或数据已过期，显示上次结果', quotaStale: '额度数据已过期',
+      refresh: '刷新状态与额度', unknown: '未知', failed: '无法获取 Pool 状态，请检查桥接地址、Key 和服务',
+      unauthenticated: 'Pool Key 无效或已失效', forbidden: 'Pool 拒绝访问',
+      states: { starting: '启动中', ready: '就绪', draining: '排空中', stopping: '停止中', stopped: '已停止', error: '异常', failed: '启动失败', unknown: '未知' }
+    },
     droid: { apiKeyHint: '填入 Factory API Key。Claude / MiniMax 使用 Messages，GPT 使用 Responses。可从官方目录同步新模型，实际权限请通过账号测试确认。' },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',

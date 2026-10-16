@@ -1,0 +1,16 @@
+[Unit]
+Description=Colab Pool metadata and inference bridge for Sub2API
+After=network-online.target colab-pool.service
+
+[Service]
+ExecStart=/opt/qwen/venv/bin/python /opt/colab-pool/sub2api-bridge/bridge.py
+WorkingDirectory=/opt/colab-pool/sub2api-bridge
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

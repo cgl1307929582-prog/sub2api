@@ -236,7 +236,9 @@
             data-lpignore="true"
             data-bwignore="true"
             :placeholder="
-              account.platform === 'droid'
+              account.platform === 'colab'
+                ? 'GPU Pool API Key'
+                : account.platform === 'droid'
                 ? 'Factory API Key'
                 : account.platform === 'openai'
                 ? 'sk-proj-...'
@@ -250,6 +252,7 @@
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
+          <p v-if="account.platform === 'colab'" class="input-hint">{{ t('admin.accounts.colab.apiKeyHint') }}</p>
           <p v-if="account.platform === 'droid'" class="input-hint">{{ t('admin.accounts.droid.apiKeyHint') }}</p>
         </div>
 

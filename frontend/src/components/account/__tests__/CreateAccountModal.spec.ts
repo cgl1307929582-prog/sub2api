@@ -660,7 +660,28 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
     expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
-    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline', 'Droid / Factory'])
+    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline', 'Droid / Factory', 'Colab / GPU Pool'])
+  })
+
+  it('creates a Colab Pool with an explicit bridge and only a Chat upstream', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-colab"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('GPU Pool')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('pool_test_secret')
+    await wrapper.get('[data-testid="cn-adaptive-base-url-chat_completions"]').setValue('https://pool.example/sub2api/v1')
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-anthropic"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-responses"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.accounts.colab.apiKeyHint')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'colab', type: 'apikey', credentials: {
+        api_key: 'pool_test_secret', account_mode: 'pool', api_protocol: 'adaptive',
+        base_url: 'https://pool.example/sub2api/v1',
+        api_base_urls: { chat_completions: 'https://pool.example/sub2api/v1' }
+      }
+    })
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
   })
 
   it('creates a separate Droid account with Factory protocol defaults', async () => {
@@ -685,7 +706,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
         ]),
       },
     })
-    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
   })
 
   it('creates a Cline account without an account type and with only the Chat Completions endpoint', async () => {

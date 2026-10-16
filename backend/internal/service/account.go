@@ -1459,6 +1459,9 @@ func (a *Account) GetOpenAIBaseURL() string {
 	if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
 		return baseURL
 	}
+	if a.IsColab() {
+		return ""
+	}
 	return "https://api.openai.com"
 }
 

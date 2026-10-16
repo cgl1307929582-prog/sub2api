@@ -148,10 +148,14 @@ func TestProviderProfile_BaseURLKeysAreNativeProtocols(t *testing.T) {
 
 	for platform, profile := range providerProfiles {
 		for mode, endpoints := range profile.Modes {
-			require.NotEmpty(t, endpoints.BaseURLs[APIProtocolChatCompletions], "%s/%s must have a chat_completions base", platform, mode)
+			require.Contains(t, endpoints.BaseURLs, APIProtocolChatCompletions, "%s/%s must declare Chat Completions", platform, mode)
 			for protocol, baseURL := range endpoints.BaseURLs {
 				require.True(t, isNativeUpstreamProtocol(protocol), "%s/%s has unknown protocol key %q", platform, mode, protocol)
-				require.NotEmpty(t, baseURL, "%s/%s/%s", platform, mode, protocol)
+				if platform == PlatformColab {
+					require.Empty(t, baseURL, "self-hosted Pool requires an explicit URL")
+				} else {
+					require.NotEmpty(t, baseURL, "%s/%s/%s", platform, mode, protocol)
+				}
 			}
 		}
 	}

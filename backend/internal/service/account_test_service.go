@@ -369,6 +369,13 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 	bindAccountTestPlatform(c, account)
+	if account.IsColab() && strings.TrimSpace(modelID) == "" {
+		models, fetchErr := s.FetchUpstreamSupportedModels(ctx, account)
+		if fetchErr != nil || len(models) == 0 {
+			return s.sendErrorAndEnd(c, "Colab Pool model discovery failed; check the bridge URL and API key")
+		}
+		modelID = models[0]
+	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials

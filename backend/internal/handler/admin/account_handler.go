@@ -2804,6 +2804,20 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if account.IsColab() {
+		ids, fetchErr := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+		if fetchErr != nil {
+			response.Error(c, http.StatusBadGateway, "Colab Pool model discovery failed")
+			return
+		}
+		models := make([]openai.Model, 0, len(ids))
+		for _, id := range ids {
+			models = append(models, openai.Model{ID: id, Object: "model", Type: "model", OwnedBy: service.PlatformColab, DisplayName: id})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	if account.IsDroid() {
 		ids := account.DroidModelIDs()
 		catalog := account.GetDroidModelCatalog()

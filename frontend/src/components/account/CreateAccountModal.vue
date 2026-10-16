@@ -4260,6 +4260,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
+  if (form.platform === 'colab') return t('admin.accounts.colab.apiKeyHint')
   if (form.platform === 'droid') return t('admin.accounts.droid.apiKeyHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
@@ -4290,6 +4291,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
 
 const apiKeyValuePlaceholder = computed(() => {
   switch (form.platform) {
+    case 'colab':
+      return 'GPU Pool API Key'
     case 'droid':
       return 'Factory API Key'
     case 'openai':
@@ -5566,7 +5569,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       Object.values(modelMapping).some((target) =>
         typeof target === 'string' && target.trim() !== '' && !target.includes('*')
       )
-    if (supportsUpstreamModelSync(payload.platform) && (upstreamModelsPreviewed.value || hasConcreteMappedTarget)) {
+    if (supportsUpstreamModelSync(payload.platform) && (payload.platform === 'colab' || upstreamModelsPreviewed.value || hasConcreteMappedTarget)) {
       try {
         const result = await adminAPI.accounts.syncUpstreamModels(account.id)
         const warnings = result.warnings ?? []
