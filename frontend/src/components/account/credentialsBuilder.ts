@@ -278,7 +278,7 @@ export function isMultiProtocolApiKeyPlatform(platform: string): boolean {
 
 /** 供应商在该接入模式下是否提供某协议的原生端点（未知模式按默认模式）。 */
 export function providerSupportsProtocol(platform: string, mode: string | undefined, protocol: CnNativeApiProtocol): boolean {
-  return !!getProviderMode(platform, mode)?.base_urls[protocol]
+  return Object.prototype.hasOwnProperty.call(getProviderMode(platform, mode)?.base_urls ?? {}, protocol)
 }
 
 /** 供应商是否提供原生 Responses 端点（DeepSeek / Kimi / MiniMax / OpenCode 等）。 */
@@ -304,6 +304,8 @@ export function providerHasModelCatalog(platform: string): boolean {
 /** 接入模式的展示名；未知模式原样显示。 */
 export function providerModeLabel(mode: string, t: (key: string) => string): string {
   switch (mode) {
+    case 'pool':
+      return 'GPU Pool'
     case 'factory':
       return 'Factory'
     case 'payg':

@@ -216,6 +216,9 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // snapshot. When no model is complete, the existing account snapshot is left
 // untouched.
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
+	if account.IsColab() {
+		return s.syncColabModelCatalog(ctx, account)
+	}
 	if account.IsDroid() {
 		return s.syncDroidModelCatalog(ctx, account)
 	}
@@ -915,6 +918,15 @@ func listVertexGeminiPublisherModels(location string, fetchPage func(page int, l
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.IsColab() {
+		if err := validateColabAccount(account); err != nil {
+			return nil, newUpstreamModelSyncConfigError("Invalid Colab Pool account", nil)
+		}
+		if account.ProxyID != nil && account.Proxy == nil {
+			return nil, newUpstreamModelSyncConfigError("Colab Pool account proxy is unavailable", nil)
+		}
+		return s.buildOpenAIUpstreamModelsRequest(WithHTTPUpstreamRedirectsDisabled(ctx), account)
+	}
 	if account.IsDroid() {
 		return s.buildDroidModelsRequest(ctx, account)
 	}

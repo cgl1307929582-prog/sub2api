@@ -1,5 +1,18 @@
 export default {
     accounts: {
+    colab: {
+      apiKeyHint: 'Enter the Colab Pool bridge URL and inference API key. Model sync and quota refresh never start GPUs; tests and inference follow the Pool auto-start setting.',
+      balance: 'Compute balance', rate: 'Consumption rate', used: 'Used in 24h',
+      instances: 'Ready {ready} · Starting {starting} / Max {max}', accounts: 'Accounts {total} · Eligible to start {eligible}',
+      autoStart: 'Auto-start enabled', manualStart: 'Auto-start disabled', idleStop: 'Stop after {minutes} idle minutes',
+      offline: 'GPU is currently offline', coldStart: 'First inference may require a 10–15 minute cold start',
+      details: 'Instance details', running: 'Running {running} · Waiting {waiting}',
+      updated: 'State sampled: {time}', quotaUpdated: 'Quota sampled: {time}',
+      stale: 'State unavailable or outdated; showing the last snapshot', quotaStale: 'Quota sample is outdated',
+      refresh: 'Refresh state and quota', unknown: 'Unknown', failed: 'Cannot read Pool status; check the bridge URL, key and service',
+      unauthenticated: 'Pool key is invalid or expired', forbidden: 'Pool access denied',
+      states: { starting: 'Starting', ready: 'Ready', draining: 'Draining', stopping: 'Stopping', stopped: 'Stopped', error: 'Error', failed: 'Failed', unknown: 'Unknown' }
+    },
     droid: { apiKeyHint: 'Enter a Factory API key. Claude / MiniMax use Messages; GPT uses Responses. Sync new models from the official catalog and verify access with an account test.' },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',

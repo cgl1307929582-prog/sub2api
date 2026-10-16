@@ -353,6 +353,24 @@
           }
         ]
       }
+    },
+    {
+      "id": "colab",
+      "display_name": "Colab / GPU Pool",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "pool",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "pool",
+            "base_urls": {
+              "chat_completions": ""
+            }
+          }
+        ]
+      }
     }
   ],
   "composite_precedence": [
@@ -369,6 +387,7 @@
     "typesafe",
     "command_code",
     "cline",
-    "droid"
+    "droid",
+    "colab"
   ]
 }

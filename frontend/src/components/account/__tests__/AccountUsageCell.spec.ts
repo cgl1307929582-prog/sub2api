@@ -130,6 +130,32 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('loads Colab quota for API-key accounts and forces refresh on demand', async () => {
+    getUsage.mockResolvedValue({ colab_pool: null, error_code: 'quota_unknown' })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 60201, platform: 'colab', type: 'apikey' }) }
+    })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledWith(60201)
+    expect(wrapper.find('[data-test="colab-pool"]').exists()).toBe(true)
+    await wrapper.get('[data-test="colab-refresh"]').trigger('click')
+    await flushPromises()
+    expect(getUsage).toHaveBeenLastCalledWith(60201, 'active', true)
+    wrapper.unmount()
+  })
+
+  it('routes desktop Colab quota loading and forced refresh through the parent batch', async () => {
+    const account = makeAccount({ id: 60202, platform: 'colab', type: 'apikey' })
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, { props: { account, requestBatchedUsage } })
+    await flushPromises()
+    expect(requestBatchedUsage).toHaveBeenCalledWith(account, undefined)
+    expect(getUsage).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="colab-refresh"]').trigger('click')
+    expect(requestBatchedUsage).toHaveBeenLastCalledWith(account, { force: true })
+    wrapper.unmount()
+  })
+
   it('loads Droid quota for API-key accounts and forces refresh on demand', async () => {
     getUsage.mockResolvedValue({ droid_quota: null, error_code: 'quota_unknown' })
     const wrapper = mount(AccountUsageCell, {

@@ -76,6 +76,11 @@
     <path d="M3 21V10l6 3V9l6 3V3h4l2 18H3Z" />
     <path d="M6 17h2m3 0h2m3 0h2" />
   </svg>
+  <svg v-else-if="platform === 'colab'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+    <rect x="9" y="9" width="6" height="6" rx="1" />
+    <path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3" />
+  </svg>
   <!-- Composite group icon -->
   <svg v-else-if="platform === 'composite'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <circle cx="6" cy="12" r="3" />

@@ -181,6 +181,7 @@ type AICredit struct {
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
+	ColabPool          *ColabPoolInfo  `json:"colab_pool,omitempty"`
 	DroidQuota         *DroidQuotaInfo `json:"droid_quota,omitempty"`
 	Source             string          `json:"source,omitempty"`               // "passive" or "active"
 	UpdatedAt          *time.Time      `json:"updated_at,omitempty"`           // 更新时间
@@ -300,6 +301,7 @@ type AccountUsageService struct {
 	grokQuotaService        *GrokQuotaService
 	openAIQuotaService      *OpenAIQuotaService
 	droidQuotaService       *DroidQuotaService
+	colabPoolService        *ColabPoolService
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -318,6 +320,7 @@ func NewAccountUsageService(
 	grokQuotaService *GrokQuotaService,
 	openAIQuotaService *OpenAIQuotaService,
 	droidQuotaService *DroidQuotaService,
+	colabPoolService *ColabPoolService,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -332,6 +335,7 @@ func NewAccountUsageService(
 		grokQuotaService:        grokQuotaService,
 		openAIQuotaService:      openAIQuotaService,
 		droidQuotaService:       droidQuotaService,
+		colabPoolService:        colabPoolService,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -393,6 +397,9 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return usage, err
 	}
 
+	if account.IsColab() {
+		return s.colabPoolService.GetUsage(ctx, account, forceProbe)
+	}
 	if account.IsDroid() {
 		return s.droidQuotaService.GetUsage(ctx, account, forceProbe)
 	}

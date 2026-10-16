@@ -119,6 +119,14 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		} else if acc.Platform != platform {
 			continue
 		}
+		if acc.IsColab() {
+			for _, model := range acc.ColabModelIDs() {
+				if _, ok := seen[model]; !ok {
+					seen[model] = struct{}{}
+					candidates = append(candidates, model)
+				}
+			}
+		}
 		for model := range acc.GetModelMapping() {
 			model = strings.TrimSpace(model)
 			if model == "" {
@@ -300,6 +308,9 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformDroid:
 		return DefaultDroidModelIDs()
+	case PlatformColab:
+		// Model IDs come from the Pool configuration, never from Claude defaults.
+		return nil
 	case PlatformTypeSafe:
 		return []string{typesafe.JevLatestModel}
 	case PlatformComposite:

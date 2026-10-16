@@ -436,6 +436,12 @@
       </div>
     </template>
 
+    <ColabPoolCell
+      v-else-if="account.platform === 'colab' && account.type === 'apikey'"
+      :usage="usageInfo" :loading="loading" :error="error"
+      @refresh="loadUsage({ source: 'active', bypassCache: true })"
+    />
+
     <DroidQuotaCell
       v-else-if="account.platform === 'droid' && account.type === 'apikey'"
       :usage="usageInfo"
@@ -698,6 +704,7 @@ import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import DroidQuotaCell from './DroidQuotaCell.vue'
+import ColabPoolCell from './ColabPoolCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
@@ -790,7 +797,7 @@ const showUsageWindows = computed(() => {
 })
 
 const shouldFetchUsage = computed(() => {
-  if (props.account.platform === 'droid') return props.account.type === 'apikey'
+  if (['droid', 'colab'].includes(props.account.platform)) return props.account.type === 'apikey'
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }
@@ -1720,14 +1727,14 @@ watch(
   (nextToken, prevToken) => {
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
-    if (props.account.platform === 'droid') usageInfo.value = null
+    if (['droid', 'colab'].includes(props.account.platform)) usageInfo.value = null
 
     if (isBatchManaged.value) {
       requestParentBatchUsage({ force: true })
       return
     }
 
-    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : props.account.platform === 'droid' ? 'active' : undefined
+    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : ['droid', 'colab'].includes(props.account.platform) ? 'active' : undefined
     _usageCache.delete(props.account.id)
     loadUsage({ source, bypassCache: true }).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)

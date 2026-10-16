@@ -1198,6 +1198,11 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	// A private Pool has no vendor-wide fallback catalog.
+	if platform == service.PlatformColab {
+		writeModelsList(c, platform, nil)
+		return
+	}
 	// Fallback to default models
 	if platform == service.PlatformDroid {
 		writeModelsList(c, platform, service.DefaultDroidModelIDs())
@@ -1506,6 +1511,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return service.DefaultOpenCodeGoModelIDs()
 	case service.PlatformDroid:
 		return service.DefaultDroidModelIDs()
+	case service.PlatformColab:
+		return nil
 	case service.PlatformTypeSafe:
 		return []string{"jev-latest"}
 	case service.PlatformComposite:
