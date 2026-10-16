@@ -238,14 +238,27 @@ func (r *droidChatSSEReader) next() ([]byte, error) {
 		return nil, io.EOF
 	}
 	var data []byte
+	event, sawData := "", false
 	for r.scanner.Scan() {
 		line := r.scanner.Bytes()
-		if len(line) == 0 && len(data) > 0 {
-			break
+		if len(line) == 0 {
+			if len(data) > 0 {
+				break
+			}
+			if sawData && droidSSEEventIsError(event) {
+				return nil, errors.New("factory upstream stream returned an error event")
+			}
+			event, sawData = "", false
+			continue
+		}
+		if bytes.HasPrefix(line, []byte("event:")) {
+			event = strings.TrimSpace(string(line[len("event:"):]))
+			continue
 		}
 		if !bytes.HasPrefix(line, []byte("data:")) {
 			continue
 		}
+		sawData = true
 		if len(data) > 0 {
 			data = append(data, '\n')
 		}
@@ -260,6 +273,11 @@ func (r *droidChatSSEReader) next() ([]byte, error) {
 		}
 		r.eof = true
 		return nil, nil
+	}
+	// The event name alone can mark a failure; the payload need not repeat an
+	// error field. Never let such a frame be skipped and later gain [DONE].
+	if droidSSEEventIsError(event) {
+		return nil, errors.New("factory upstream stream returned an error event")
 	}
 	if bytes.Equal(data, []byte("[DONE]")) {
 		if r.google {

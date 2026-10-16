@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -197,4 +198,234 @@ func TestDroidErrorSSEReaderBoundsAndSafeErrors(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(out), key)
 	require.Contains(t, string(out), "Factory upstream error details unavailable")
+}
+
+// joinDroidSSEDataLines mimics an SSE client: data lines of one event joined by "\n".
+func joinDroidSSEDataLines(t *testing.T, out []byte) [][]byte {
+	t.Helper()
+	var events [][]byte
+	for _, event := range strings.Split(strings.ReplaceAll(string(out), "\r\n", "\n"), "\n\n") {
+		var data []string
+		for _, line := range strings.Split(event, "\n") {
+			if strings.HasPrefix(line, "data:") {
+				data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			}
+		}
+		if len(data) > 0 {
+			events = append(events, []byte(strings.Join(data, "\n")))
+		}
+	}
+	return events
+}
+
+func TestDroidErrorSSEReaderRedactsMultiLineErrorEvents(t *testing.T) {
+	key := "factory_test_secret"
+	nested, err := json.Marshal(`{"error":{"message":"factory_test_\u0073ecret"}}`)
+	require.NoError(t, err)
+	body := "data: {\"type\":\"error\",\n" + `data: "error":{"message":` + string(nested) + "}}\n\n"
+	for _, prefix := range []string{"", "event: error\n", ": comment\n"} {
+		for _, ending := range []string{"\n", "\r\n"} {
+			wire := strings.ReplaceAll(prefix+body, "\n", ending)
+			for _, chunk := range []int{1, 2, 3, 5, 8, 4096} {
+				reader := newDroidErrorSSEReader(&droidRedactionTestSource{data: []byte(wire), chunk: chunk}, key)
+				out, err := io.ReadAll(reader)
+				require.NoError(t, err)
+				events := joinDroidSSEDataLines(t, out)
+				require.Len(t, events, 1)
+				require.True(t, json.Valid(events[0]), "collapsed error must stay valid JSON: %s", events[0])
+				message := extractUpstreamErrorMessage(events[0])
+				require.NotContains(t, message, key)
+				require.Contains(t, message, "[REDACTED]")
+				require.Equal(t, 1, strings.Count(string(out), "data:"), "error data lines collapse into one")
+				require.True(t, strings.HasSuffix(string(out), ending+ending))
+				if prefix != "" {
+					require.True(t, strings.HasPrefix(string(out), strings.ReplaceAll(prefix, "\n", ending)))
+				}
+			}
+		}
+	}
+
+	// An error named only by the event line, whose joined data is not JSON.
+	reader := newDroidErrorSSEReader(io.NopCloser(strings.NewReader("event: error\ndata: first "+key+"\ndata: second\n\n")), key)
+	out, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NotContains(t, string(out), key)
+	require.Equal(t, "event: error\ndata: "+droidRedactedErrorJSON+"\n\n", string(out))
+
+	// The event line may follow the data lines inside the same event.
+	reader = newDroidErrorSSEReader(io.NopCloser(strings.NewReader("data: {\"message\":\ndata: \""+key+"\"}\nevent: error\n\n")), key)
+	out, err = io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NotContains(t, string(out), key)
+
+	// A held error event ending at EOF without a blank line is still redacted.
+	reader = newDroidErrorSSEReader(io.NopCloser(strings.NewReader("data: {\"error\":\ndata: {\"message\":\""+key+"\"}}")), key)
+	out, err = io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, `data: {"error":{"message":"[REDACTED]"}}`+"\n", string(out))
+}
+
+func TestDroidErrorSSEReaderPreservesMultiLineSuccessEvents(t *testing.T) {
+	input := "data: {\"type\":\"response.output_text.delta\",\n" +
+		"data: \"delta\":\"literal \\\\u0073\"}\nid: 7\n\n" +
+		"data:\ndata: {\"type\":\"done\"}\n\n" +
+		"data: [DONE]\n\n"
+	for _, chunk := range []int{1, 3, 8, 4096} {
+		reader := newDroidErrorSSEReader(&droidRedactionTestSource{data: []byte(input), chunk: chunk}, "factory_test_secret")
+		out, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		require.Equal(t, input, string(out))
+	}
+}
+
+func TestDroidErrorSSEReaderNeverReleasesIncompleteHeldEvents(t *testing.T) {
+	key := "factory_test_secret"
+	for _, readErr := range []error{context.Canceled, errors.New("transport " + key)} {
+		source := &droidRedactionTestSource{data: []byte(": ok\ndata: {\"error\":\ndata: \"" + key + "\"}\n"), chunk: 4, readErr: readErr}
+		out, err := io.ReadAll(newDroidErrorSSEReader(source, key))
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), key)
+		require.Equal(t, ": ok\n", string(out))
+	}
+
+	// A held event is bounded by the same frame limit as a single line.
+	line := "data: " + strings.Repeat("x", 1<<16) + "\n"
+	wire := "data: {\"error\":\n" + strings.Repeat(line, droidErrorJSONMaxBytes/len(line)+1) + "data: \"" + key + "\"}\n\n"
+	out, err := io.ReadAll(newDroidErrorSSEReader(io.NopCloser(strings.NewReader(wire)), key))
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), key)
+	require.Empty(t, out)
+}
+
+func droidHiddenKeyPayload(t *testing.T, field string) string {
+	t.Helper()
+	nested, err := json.Marshal(`{"error":{"message":"factory_test_\u0073ecret"}}`)
+	require.NoError(t, err)
+	return `{"` + field + `":` + string(nested) + `}`
+}
+
+func TestDroidErrorSSEReaderRedactsCompleteDataBeforeErrorEventName(t *testing.T) {
+	key := "factory_test_secret"
+	payload := droidHiddenKeyPayload(t, "message")
+	for _, ending := range []string{"\n", "\r\n"} {
+		wire := "data: " + payload + ending + "event: error" + ending + ending
+		for _, chunk := range []int{1, 7, 4096} {
+			out, err := io.ReadAll(newDroidErrorSSEReader(&droidRedactionTestSource{data: []byte(wire), chunk: chunk}, key))
+			require.NoError(t, err)
+			events := joinDroidSSEDataLines(t, out)
+			require.Len(t, events, 1)
+			message := extractUpstreamErrorMessage(events[0])
+			require.NotContains(t, message, key)
+			require.Contains(t, message, "[REDACTED]")
+			require.True(t, strings.HasSuffix(string(out), "event: error"+ending+ending))
+		}
+	}
+
+	// Escaped backslashes without a hidden key, and deep structure, keep their bytes.
+	deep := strings.Repeat(`{"a":`, droidErrorJSONMaxDepth+4) + `"C:\\path \\u0073"` + strings.Repeat("}", droidErrorJSONMaxDepth+4)
+	input := "data: " + deep + "\n\n" + `data: {"delta":"{\"text\":\"a\\\\b\"}"}` + "\n\n"
+	out, err := io.ReadAll(newDroidErrorSSEReader(io.NopCloser(strings.NewReader(input)), key))
+	require.NoError(t, err)
+	require.Equal(t, input, string(out))
+}
+
+func TestDroidRoundTripRedactsHiddenKeysInNativeStreams(t *testing.T) {
+	for _, route := range []struct{ path, model string }{
+		{"https://api.factory.ai/api/llm/a/v1/messages", "claude-sonnet-4-6"},
+		{"https://api.factory.ai/api/llm/o/v1/responses", "gpt-5.4"},
+	} {
+		for name, wire := range map[string]string{
+			"data_then_event": "data: " + droidHiddenKeyPayload(t, "message") + "\nevent: error\n\n",
+			"multi_line":      "data: {\"type\":\"error\",\n" + "data: " + strings.TrimPrefix(droidHiddenKeyPayload(t, "error"), "{") + "\n\n",
+		} {
+			request, err := http.NewRequest(http.MethodPost, route.path, strings.NewReader(`{"model":"`+route.model+`","stream":true}`))
+			require.NoError(t, err)
+			resp, err := droidRoundTrip(request, droidTestAccount(), func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(wire))}, nil
+			})
+			require.NoError(t, err, name)
+			out, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			require.NoError(t, err, name)
+			events := joinDroidSSEDataLines(t, out)
+			require.Len(t, events, 1, name)
+			decoded := droidDecodeAllJSONStrings(t, events[0])
+			require.NotContains(t, decoded, "factory_test_secret", "%s %s", route.path, name)
+			require.Contains(t, decoded, "[REDACTED]", "%s %s", route.path, name)
+		}
+	}
+}
+
+// droidDecodeAllJSONStrings independently decodes every nested JSON string
+// layer, as a permissive client would, and returns all decoded text.
+func droidDecodeAllJSONStrings(t *testing.T, data []byte) string {
+	t.Helper()
+	var value any
+	require.NoError(t, json.Unmarshal(data, &value))
+	var out strings.Builder
+	var walk func(any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case string:
+			out.WriteString(v + "\n")
+			var nested any
+			if json.Unmarshal([]byte(v), &nested) == nil {
+				walk(nested)
+			}
+		case map[string]any:
+			for k, child := range v {
+				out.WriteString(k + "\n")
+				walk(child)
+			}
+		case []any:
+			for _, child := range v {
+				walk(child)
+			}
+		}
+	}
+	walk(value)
+	return out.String()
+}
+
+// droidQuoteJSON wraps text as a JSON string document the given number of times.
+func droidQuoteJSON(t *testing.T, text string, times int) string {
+	t.Helper()
+	for i := 0; i < times; i++ {
+		encoded, err := json.Marshal(text)
+		require.NoError(t, err)
+		text = string(encoded)
+	}
+	return text
+}
+
+func TestDroidNestedJSONStringScalarDoesNotLeak(t *testing.T) {
+	const key = "factory_test_secret"
+	for layers := 2; layers <= 4; layers++ {
+		// The innermost layer hides one key character behind a \u escape.
+		hidden := strings.TrimSuffix(strings.TrimPrefix(droidQuoteJSON(t, key, 1), `"`), `"`)
+		hidden = strings.Replace(hidden, "s", `\u0073`, 1)
+		payload := `{"message":` + droidQuoteJSON(t, `"`+hidden+`"`, layers-1) + `}`
+		errorPayload := `{"error":{"message":` + droidQuoteJSON(t, `"`+hidden+`"`, layers-1) + `}}`
+		for name, wire := range map[string]string{
+			"event_after":  "data: " + payload + "\nevent: error\n\n",
+			"event_before": "event: error\ndata: " + payload + "\n\n",
+			"unlabelled":   "data: " + errorPayload + "\n\n",
+		} {
+			redactor := newDroidErrorSSEReader(io.NopCloser(strings.NewReader(wire)), key)
+			reader := &droidSecretReader{source: &droidJSONEscapeReader{source: redactor}, secret: []byte(key)}
+			out, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			events := joinDroidSSEDataLines(t, out)
+			require.Len(t, events, 1, name)
+			decoded := droidDecodeAllJSONStrings(t, events[0])
+			require.NotContains(t, decoded, key, "layers=%d %s", layers, name)
+			require.Contains(t, decoded, "[REDACTED]", "layers=%d %s", layers, name)
+		}
+	}
+
+	// Quoted, escaped success text without the key keeps its original bytes.
+	input := `data: {"delta":"\"say \\\"hi\\\"\""}` + "\n\n"
+	out, err := io.ReadAll(newDroidErrorSSEReader(io.NopCloser(strings.NewReader(input)), key))
+	require.NoError(t, err)
+	require.Equal(t, input, string(out))
 }
