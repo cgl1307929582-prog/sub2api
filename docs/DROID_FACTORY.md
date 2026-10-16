@@ -2,7 +2,7 @@
 
 基线：官方 `Wei-Shaw/sub2api`，提交 `b8cfb7884084393e08f0e2c4027afc3755357b98`（2026-10-16，VERSION 为 `0.2.16`）。
 维护仓库：`https://github.com/cgl1307929582-prog/sub2api`。
-实现分支：`codex/droid-factory`。平台 ID 为 `droid`，界面名称为 **Droid / Factory**。
+平台 ID 为 `droid`，界面名称为 **Droid / Factory**。
 
 ## 已实现
 
@@ -24,17 +24,33 @@
 | `claude-*` | `/api/llm/a/v1/messages` | `anthropic` | Messages |
 | `minimax-*` | `/api/llm/a/v1/messages` | `fireworks` | Messages |
 | `gpt-*` | `/api/llm/o/v1/responses` | `openai` | Responses |
-| `glm-*`、`kimi-*` | `/api/llm/o/v1/chat/completions` | `fireworks` | Chat Completions |
+| `grok-*` | `/api/llm/o/v1/responses` | `xai` | Responses |
+| `gemini-*` | `/api/llm/g/v1/generate` | `google` | Chat / Responses / Messages，经内部转换 |
+| `mistral-*` | `/api/llm/o/v1/chat/completions` | `mistral` | Chat Completions |
+| `glm-*`、`kimi-*`、`deepseek-*`、`qwen*`、`nemotron-*`、`inkling` | `/api/llm/o/v1/chat/completions` | `fireworks` | Chat Completions |
 
 默认主机为 `https://api.factory.ai`。上游路径与模型族须匹配；未支持的模型族在发送前拒绝，不按上游故障轮换账号。高级地址配置沿用平台现有校验，不另开安全豁免。
 
-本地候选目录：`claude-sonnet-4-6`、`claude-opus-4-6`、`claude-haiku-4-5-20251001`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`glm-5.3-flash`、`glm-5`、`kimi-k2.5`、`minimax-m2.5`。默认连接测试使用 Haiku 4.5。
+本地候选目录：`claude-sonnet-4-6`、`claude-opus-4-6`、`claude-haiku-4-5-20251001`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`glm-5.3-flash`、`glm-5`、`kimi-k2.5`、`minimax-m2.5`。新增候选包含 Gemini 3 Flash、3.1 Pro、3.5–3.8 Flash，Grok 4.5–4.7，DeepSeek V4 Flash 0731、V4 Pro、V4.1 Flash，Mistral Large 4、Medium 3.5，Qwen3.8 Max、Nemotron 3 Ultra 和 Inkling。默认连接测试使用 Haiku 4.5。
 
 在创建或编辑 Droid API Key 账号的模型白名单中点击 **同步上游支持的模型**，会实时读取 [Factory 官方模型目录](https://docs.factory.com/models) 的 Markdown 版本 `https://docs.factory.com/models.md`，增量加入当前适配器可转发的模型，保留已有条目和自定义映射。保存账号后白名单生效；编辑页面显示最近同步时间。以后官方目录添加同协议模型时，再次同步即可获取，无需更新代码中的默认清单。
 
 成功同步的目录保存在账号 `extra.droid_model_catalog`，用于下拉选择、管理端账号测试和公共 `/v1/models`（仍受账号映射和分组限制）。每次点击重新获取；没有后台定时同步。请求或解析失败时保留上次目录和映射，未同步账号使用上述本地默认候选。已配置代理但代理不可用时查询失败，不静默直连；查询遵守服务器 URL 白名单、20 秒超时和 1 MiB 响应上限，不跟随重定向，且不会把 Factory Key 发给文档主机。
 
-**这是官方公开目录，不是该 Key 的模型权限清单。** Factory 当前标准 `/models` 路径未提供可用列表；具体权限、地区、额度和即时可用性仍需账号测试确认。同步只纳入上表支持的模型族，未接入的 Gemini、Grok 等会显示排除数量，不宣称可转发。只读取官方名称和 reasoning 档位，不推测上下文、价格或输出上限。本地配额和 token 计费与下面的 Factory 套餐额度分别记录。
+**这是官方公开目录，不是该 Key 的模型权限清单。** Factory 当前标准 `/models` 路径未提供可用列表；具体权限、地区、额度和即时可用性仍需账号测试确认。同步只纳入上表支持的模型族，未知协议和图像生成模型仍会显示排除数量，不宣称可转发。只读取官方名称和 reasoning 档位，不推测上下文、价格或输出上限。本地配额和 token 计费与下面的 Factory 套餐额度分别记录。
+
+## Gemini 与其他新增模型
+
+Factory 的 Google 端点始终返回 SSE，并拒绝请求体中的 `stream` 字段。传输层将共享 Chat 请求转换为 Google 请求，再将流式片段转换成 Chat 格式；普通响应会聚合成 JSON。三种入站与管理端账号测试共用这一转换，不需要重建账号。Droid 的固定模型协议优先于旧账号保存的协议规则，避免新增 Grok 被旧规则送入 Chat 端点。
+
+- Gemini 函数声明使用 `parametersJsonSchema`，工具参数保持 JSON 大整数；工具结果按函数名配对。`thoughtSignature` 编入带识别标记的工具调用 ID，随 Chat、Responses、Messages 往返，不依赖进程缓存或伪造签名。客户端需原样保留工具 ID。
+- Gemini 支持文本、内联媒体输入、输出 token 上限、温度、停止序列、JSON 输出和函数选择。媒体 URL 只转交上游，网关不自行抓取。推理档位映射为 Google thinkingLevel；不支持完全关闭思考的模型用最低支持档位。
+- Gemini 输出计费包含 candidatesTokenCount 与 thoughtsTokenCount，缓存读取单独保留。必须收到有效 finishReason 才发送成功终态；错误、断流、畸形及超大 SSE 帧不会补造 `[DONE]`。
+- Mistral 使用 `mistral` 供应商，只接受 high/none：启用思考的通用档位映射为 high，off/none 映射为 none。Large 4 的 text/thinking 数组转换为正文和 reasoning_content，包含流式 delta；Inkling 与 Fireworks 的思考 token 用量转换为标准字段。
+- 本次适配记录上游 token，用量价格仍使用部署方的 Sub2API 价表。没有价格条目的新模型可能记为 0 美元（本地验收中的 Mistral 即如此），不能据此判断 Factory 免费；用于对外计费前应配置并验证对应模型的自定义价格。Factory 目录倍率不自动换算为美元单价。
+- 2026-10-16 原生请求中，旧 `deepseek-v4-flash-0731`、`deepseek-v4-pro` 均返回 `accounts/fireworks/models/deepseek-v4p1-flash`。保留可调用 ID，不保证弃用别名对应旧模型；精确选型请使用当前 ID，并核对上游返回。
+
+签名处理依据 [Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)；Factory 路径、供应商和返回格式以实际请求验证。此处没有复制第三方适配器实现。
 
 ## Factory 套餐额度与额外余额
 
@@ -57,7 +73,7 @@
 - 转换时显式 `none/minimal` reasoning 不开启手动 thinking；thinking 预算须小于输出上限。上限过小（≤1024 且请求需要更高 thinking 预算）返回 400，不擅自提高输出或计费上限。
 - 生成 Anthropic 请求时按现有 Claude 能力目录处理 effort。Haiku/Sonnet 4.5 保留手动 thinking 预算，但不发送它们不支持的 `output_config.effort`。
 - Chat Completions 不具备 Claude 签名续轮字段。Claude 的显式中高 reasoning 或已携带 reasoning 历史会返回 400，提示使用 Messages 或 Responses。不要宣称这种转换无损。
-- 原生 Google/Gemini、图像、音频、视频、Factory refresh-token 和 CLI/SDK 子进程桥接不在本实现范围。
+- Gemini 已可经 Chat Completions、Responses 和 Messages 使用；没有为 Droid 增设 Google 原生 `/v1beta` 入站。图像生成、音频、视频、Factory refresh-token 和 CLI/SDK 子进程桥接不在本实现范围。
 - usage 基于上游已收到的数据；取消或半流可能没有最终 output usage，不推算为真实最终用量。
 
 ## 本地验证与构建
@@ -71,7 +87,7 @@ npx --yes pnpm@9.15.9 run build
 cd ../backend
 go test -tags unit ./...
 CGO_ENABLED=0 go build -tags embed -trimpath \
-  -ldflags='-s -w -X main.Version=v0.2.16-droid.1 -X main.BuildType=source' \
+  -ldflags='-s -w -X main.Version=0.2.16-droid.5 -X main.BuildType=source' \
   -o bin/sub2api-droid ./cmd/server
 ```
 
@@ -81,7 +97,7 @@ CGO_ENABLED=0 go build -tags embed -trimpath \
 
 ```sh
 cd backend
-go test -tags unit ./internal/service ./internal/handler -run '^TestDroid' -count=1
+go test -tags unit ./internal/service ./internal/handler ./internal/handler/admin -run '^TestDroid' -count=1
 go test ./internal/pkg/apicompat
 ```
 
@@ -94,11 +110,13 @@ go test ./internal/pkg/apicompat
 - Claude 工具调用与提交工具结果后的续轮：2 项通过。
 - 登录成功，无 Key 请求被拒绝，带 Key 的 Droid 模型目录正常；14 次成功生成均写入 usage 记录。
 
-只测试列出的模型；套餐权限与内部接口可能变化。真实 Key 从仓库外读取，未写入源码、测试夹具或公开报告。测试数据库和临时服务在运行后清理。账号表单及管理端连接测试使用自动化测试覆盖；真实链路使用临时数据库夹具，不代替用户确认管理控制台中的部署承诺。
+同日新增 17 个模型通过完整 Sub2API 实例的验收：每个型号分别测试 Chat Completions、Responses、Messages 的普通与流式输出，共 102 项；另外 30 次工具调用及结果续传请求通过，包括 Gemini 六个型号及三种入口。验收要求 HTTP 200、正文 OK（允许结尾标点）、流式成功终态且无错误；初次 Mistral reasoning 400 已修复复测。Mistral Medium 3.5 在 auto 模式下曾再次调用工具，续轮显式 none 后正确返回工具结果。用量写入临时 PostgreSQL，服务与凭据数据库完成清理。
+
+只测试列出的模型与能力；套餐权限与内部接口可能变化。真实 Key 从仓库外读取，未写入源码、测试夹具或公开报告。账号表单及管理端连接测试使用自动化测试覆盖；真实链路使用临时数据库夹具，不代替用户确认管理控制台中的部署承诺。
 
 ## 启动、安全交接与回滚
 
-本分支用于独立环境验证。临时测试实例使用自己的数据库和 Redis；现有部署未被修改。
+临时测试实例应使用自己的数据库和 Redis。生产发布需要先记录当前镜像与配置，并备份数据库和数据目录。
 
 先确认独立测试实例及其专用 PostgreSQL/Redis 配置。使用该基线原有的配置/初始化流程，完成实例配置后可从其工作目录运行构建产物；避免将新二进制指向未经确认的旧生产数据库，因为启动可能应用基线已有迁移。需要 Docker 部署时，在已确认的环境以本分支源码构建原有 Dockerfile。
 
@@ -109,7 +127,7 @@ go test ./internal/pkg/apicompat
 3. 创建/选择 Droid 测试分组，分别运行 Claude Messages 与 GPT Responses 测试，再进行工具续轮、流式取消和少量计费对账。模型权限以实际返回为准。
 4. 确认上述结果后，再单独批准生产部署/重启。禁止把本机 mock 通过当作此项已完成。
 
-当前回滚无需操作生产环境：原有目录与部署保持原样。若以后部署本分支，先恢复上一版二进制/镜像；新增 Droid 账号与分组先停用，保留其用量记录。数据库回退需按部署前备份与实际迁移记录单独处理，不在此文提供自动破坏性 SQL。
+应用回滚先恢复上一版二进制/镜像，保留账号与用量记录。模型目录同步前另备份账号配置，回滚时检查旧版是否支持新增模型。数据库回退需按部署前备份与实际迁移记录单独处理，不在此文提供自动破坏性 SQL。
 
 ## 来源与许可
 

@@ -14,7 +14,7 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.3-codex')
     expect(models).toContain('claude-sonnet-4-6')
     expect(models).toContain('minimax-m2.5')
-    expect(models.some(model => model.startsWith('gemini-'))).toBe(false)
+    expect(models).toEqual(expect.arrayContaining(['gemini-3.8-flash', 'grok-4.7', 'deepseek-v4.1-flash', 'mistral-large-4', 'qwen3.8-max', 'nemotron-3-ultra', 'inkling']))
   })
   it('平台清单中没有内置模型列表的多协议供应商不预填白名单', () => {
     setPlatformCatalog({

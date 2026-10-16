@@ -107,6 +107,7 @@ var providerProfiles = map[string]*ProviderProfile{
 					{Pattern: "claude-*", Protocol: APIProtocolAnthropic},
 					{Pattern: "minimax-*", Protocol: APIProtocolAnthropic},
 					{Pattern: "gpt-*", Protocol: APIProtocolResponses},
+					{Pattern: "grok-*", Protocol: APIProtocolResponses},
 					{Pattern: "glm-*", Protocol: APIProtocolChatCompletions},
 					{Pattern: "kimi-*", Protocol: APIProtocolChatCompletions},
 				},

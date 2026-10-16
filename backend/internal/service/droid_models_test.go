@@ -41,8 +41,8 @@ func factoryCatalogResponse(body string) *http.Response {
 func TestDroidModelCatalogParsesNewIDsWithoutHardcodedVersions(t *testing.T) {
 	catalog, err := parseDroidModelCatalog(factoryCatalogFixture())
 	require.NoError(t, err)
-	require.Equal(t, []string{"claude-future-test", "glm-future-test", "gpt-future-test", "kimi-future-test", "minimax-future-test"}, catalog.Models)
-	require.Equal(t, []string{"gemini-future-test", "gpt-image-future-test", "grok-future-test"}, catalog.UnsupportedModels)
+	require.Equal(t, []string{"claude-future-test", "gemini-future-test", "glm-future-test", "gpt-future-test", "grok-future-test", "kimi-future-test", "minimax-future-test"}, catalog.Models)
+	require.Equal(t, []string{"gpt-image-future-test"}, catalog.UnsupportedModels)
 	entry := catalog.Metadata["claude-future-test"]
 	require.Equal(t, "Claude Future", entry.DisplayName)
 	require.Equal(t, []string{"low", "high"}, entry.SupportedReasoningLevels)
