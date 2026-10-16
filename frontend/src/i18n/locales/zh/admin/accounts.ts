@@ -1,6 +1,6 @@
 export default {
     accounts: {
-    droid: { apiKeyHint: '填入 Factory API Key。Claude / MiniMax 使用 Messages，GPT 使用 Responses；模型目录是静态候选，实际权限以 Factory 账号为准。' },
+    droid: { apiKeyHint: '填入 Factory API Key。Claude / MiniMax 使用 Messages，GPT 使用 Responses。可从官方目录同步新模型，实际权限请通过账号测试确认。' },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
@@ -961,6 +961,7 @@ export default {
       fillRelatedModels: '同步最新支持模型',
       syncUpstreamModels: '同步上游支持的模型',
       factoryModelCatalogSource: 'Factory 官方模型目录',
+      factoryFillBuiltinModels: '填入内置候选模型',
       factoryModelCatalogHint: '同步当前可转发的公开模型，保留已有映射。保存账号后生效；账号权限请通过模型测试确认。',
       factoryModelCatalogSyncedAt: '最近同步：{time}',
       factoryModelCatalogUnsupported: '另有 {count} 个模型尚未支持转发，未加入列表。',

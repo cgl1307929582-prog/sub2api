@@ -1,6 +1,6 @@
 export default {
     accounts: {
-    droid: { apiKeyHint: 'Enter a Factory API key. Claude / MiniMax use Messages; GPT uses Responses. The model catalog contains static candidates; availability depends on your Factory account.' },
+    droid: { apiKeyHint: 'Enter a Factory API key. Claude / MiniMax use Messages; GPT uses Responses. Sync new models from the official catalog and verify access with an account test.' },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
@@ -840,6 +840,7 @@ export default {
       fillRelatedModels: 'Sync latest supported models',
       syncUpstreamModels: 'Sync upstream supported models',
       factoryModelCatalogSource: 'Factory official model catalog',
+      factoryFillBuiltinModels: 'Fill built-in candidate models',
       factoryModelCatalogHint: 'Sync public models supported by this adapter and keep existing mappings. Save the account to apply; use an account test to verify access.',
       factoryModelCatalogSyncedAt: 'Last synced: {time}',
       factoryModelCatalogUnsupported: '{count} additional models are not yet supported by this adapter and were excluded.',
