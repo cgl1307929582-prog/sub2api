@@ -102,7 +102,7 @@ func TestResponsesStreamingFromNativeAnthropic_ClientDisconnectDrainsUsage(t *te
 	defer func() { _ = pr.Close() }()
 
 	res, err := svc.handleResponsesStreamingFromNativeAnthropic(
-		resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+		resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{}, false)
 
 	require.NoError(t, err, "断开排水至上游自然结束应返回 nil error（usage 走成功路径落账）")
 	require.NotNil(t, res)
@@ -155,7 +155,7 @@ func TestResponsesStreamingFromNativeAnthropic_NormalizesTerminalUsage(t *testin
 				resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(strings.Join(lines, "\n")))}
 
 				result, err := (&OpenAIGatewayService{}).handleResponsesStreamingFromNativeAnthropic(
-					resp, c, "k3", "k3", "k3", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+					resp, c, "k3", "k3", "k3", nil, time.Now(), apicompat.ResponsesClientToolMapping{}, false)
 				require.NoError(t, err)
 				require.Equal(t, tt.wantInput+tt.wantCached+tt.wantCacheCreation, result.Usage.InputTokens)
 				require.Equal(t, tt.wantOutput, result.Usage.OutputTokens)

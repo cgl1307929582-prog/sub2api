@@ -1222,6 +1222,20 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			return
 		}
 	}
+	// Factory has no verified quota-window API. Honor its HTTP Retry-After,
+	// then use the existing configurable fallback instead of inventing a reset.
+	if account.IsDroid() {
+		now := time.Now()
+		if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {
+			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+			}
+		} else {
+			s.apply429FallbackRateLimit(ctx, account, "factory_no_retry_after")
+		}
+		return
+	}
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)

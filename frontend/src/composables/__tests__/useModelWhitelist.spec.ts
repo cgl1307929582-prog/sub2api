@@ -8,6 +8,14 @@ import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatfo
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
+  it('uses the shared Factory candidates without unrelated models', () => {
+    const models = getModelsByPlatform('droid')
+    expect(models).toEqual(BUILTIN_PLATFORM_CATALOG.platforms.find(p => p.id === 'droid')?.multi_protocol?.candidate_models)
+    expect(models).toContain('gpt-5.3-codex')
+    expect(models).toContain('claude-sonnet-4-6')
+    expect(models).toContain('minimax-m2.5')
+    expect(models.some(model => model.startsWith('gemini-'))).toBe(false)
+  })
   it('平台清单中没有内置模型列表的多协议供应商不预填白名单', () => {
     setPlatformCatalog({
       ...BUILTIN_PLATFORM_CATALOG,

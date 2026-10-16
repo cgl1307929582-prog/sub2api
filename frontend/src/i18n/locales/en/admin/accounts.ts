@@ -1,5 +1,6 @@
 export default {
     accounts: {
+    droid: { apiKeyHint: 'Enter a Factory API key. Claude / MiniMax use Messages; GPT uses Responses. The model catalog contains static candidates; availability depends on your Factory account.' },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

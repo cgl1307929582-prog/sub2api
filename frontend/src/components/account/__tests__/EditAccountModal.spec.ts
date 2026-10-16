@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -467,6 +467,29 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-5.2': 'gpt-5.2'
     })
+  })
+
+  it('keeps minimal redacted Droid accounts on adaptive routing when edited', async () => {
+    const account = buildAccount()
+    account.platform = 'droid'
+    account.credentials = {}
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect((wrapper.get('input[type="password"]').element as HTMLInputElement).value).toBe('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject({
+      account_mode: 'factory', api_protocol: 'adaptive',
+      api_base_urls: {
+        chat_completions: 'https://api.factory.ai/api/llm/o/v1',
+        responses: 'https://api.factory.ai/api/llm/o/v1',
+        anthropic: 'https://api.factory.ai/api/llm/a',
+      },
+    })
+    expect(credentials).not.toHaveProperty('api_key')
   })
 
   it('preserves OpenCode Zen account type and endpoints on submit', async () => {

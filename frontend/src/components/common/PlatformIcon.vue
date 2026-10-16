@@ -71,6 +71,11 @@
     <rect x="65.5996" y="44.8008" width="9.6" height="28.8" rx="4.8" />
     <rect x="36.8008" y="44.8008" width="9.6" height="28.8" rx="4.8" />
   </svg>
+  <!-- Droid / Factory: local, neutral factory mark. -->
+  <svg v-else-if="platform === 'droid'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+    <path d="M3 21V10l6 3V9l6 3V3h4l2 18H3Z" />
+    <path d="M6 17h2m3 0h2m3 0h2" />
+  </svg>
   <!-- Composite group icon -->
   <svg v-else-if="platform === 'composite'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <circle cx="6" cy="12" r="3" />

@@ -902,6 +902,9 @@ func listVertexGeminiPublisherModels(location string, fetchPage func(page int, l
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.IsDroid() {
+		return nil, newUpstreamModelSyncUnsupportedError("Factory uses a local compatibility catalog; live model discovery is not supported", nil)
+	}
 	switch {
 	case account.Platform == PlatformAntigravity:
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)

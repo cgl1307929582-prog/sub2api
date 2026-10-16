@@ -335,7 +335,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	}
 
 	// 6. Build upstream request
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamCtx, releaseUpstreamCtx := detachAccountUpstreamContext(ctx, account, true)
 	cancelUpstream := func() {}
 	if clientStream {
 		upstreamCtx, cancelUpstream = context.WithCancel(upstreamCtx)

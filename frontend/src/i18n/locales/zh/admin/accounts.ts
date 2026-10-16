@@ -1,5 +1,6 @@
 export default {
     accounts: {
+    droid: { apiKeyHint: '填入 Factory API Key。Claude / MiniMax 使用 Messages，GPT 使用 Responses；模型目录是静态候选，实际权限以 Factory 账号为准。' },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
