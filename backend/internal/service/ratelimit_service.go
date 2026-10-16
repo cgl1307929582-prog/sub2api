@@ -1222,8 +1222,8 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			return
 		}
 	}
-	// Factory has no verified quota-window API. Honor its HTTP Retry-After,
-	// then use the existing configurable fallback instead of inventing a reset.
+	// Billing windows do not identify which pool caused this request's 429.
+	// Honor Retry-After, then use the configurable fallback, not a guessed reset.
 	if account.IsDroid() {
 		now := time.Now()
 		if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {

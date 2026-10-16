@@ -317,7 +317,7 @@
               :account="row"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
-              :manual-refresh-token="usageManualRefreshToken"
+              :manual-refresh-token="usageManualRefreshToken + (droidUsageRefreshTokens[row.id] ?? 0)"
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
@@ -709,6 +709,7 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const droidUsageRefreshTokens = ref<Record<number, number>>({})
 
 const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
@@ -737,6 +738,7 @@ const buildDefaultTodayStats = (): WindowStats => ({
 })
 
 const accountSupportsBatchUsage = (account: Account) => {
+  if (account.platform === 'droid') return account.type === 'apikey'
   if (account.platform === 'anthropic') {
     return account.type === 'oauth' || account.type === 'setup-token'
   }
@@ -2255,6 +2257,11 @@ const handleProbeUpstreamBilling = async (account: Account) => {
 }
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
+  if (updatedAccount.platform === 'droid') {
+    usageBatchCache.delete(updatedAccount.id)
+    setUsageBatchState(updatedAccount.id, null, null)
+    droidUsageRefreshTokens.value[updatedAccount.id] = (droidUsageRefreshTokens.value[updatedAccount.id] ?? 0) + 1
+  }
   enterAutoRefreshSilentWindow()
 }
 const formatExportTimestamp = () => {

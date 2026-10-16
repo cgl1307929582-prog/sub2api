@@ -1452,8 +1452,30 @@ export interface GrokBillingSummary {
   failed_windows?: string[]
 }
 
+export interface DroidQuotaWindow {
+  used_percent: number | null
+  resets_at: string | null
+}
+
+export interface DroidQuotaPool {
+  five_hour: DroidQuotaWindow | null
+  weekly: DroidQuotaWindow | null
+  monthly: DroidQuotaWindow | null
+}
+
+export interface DroidQuotaInfo {
+  standard: DroidQuotaPool | null
+  core: DroidQuotaPool | null
+  extra_usage_balance_cents: number | null
+  extra_usage_allowed: boolean | null
+  uses_token_rate_limits_billing: boolean | null
+  fetched_at: string
+  stale: boolean
+}
+
 export interface AccountUsageInfo {
-  source?: 'passive' | 'active'
+  droid_quota?: DroidQuotaInfo | null
+  source?: 'passive' | 'active' | 'cache'
   updated_at: string | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null

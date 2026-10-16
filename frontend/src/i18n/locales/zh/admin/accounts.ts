@@ -512,6 +512,20 @@ export default {
           unavailableDesc: '服务不可用 - 暂停 30 分钟'
         }
       },
+      factoryQuota: {
+        used: '已用',
+        inactive: '尚无活动窗口',
+        unknown: '未知',
+        extraBalance: '额外充值余额 (USD)',
+        stale: '刷新失败，显示上次结果',
+        updated: '查询时间：{time}',
+        windowHint: '剩余 {percent}%；重置时间：{time}',
+        refresh: '刷新 Factory 额度',
+        unauthenticated: 'Factory 额度查询鉴权失败',
+        forbidden: '当前 Key 无权查询 Factory 额度',
+        rateLimited: 'Factory 额度查询过于频繁，请稍后重试',
+        failed: 'Factory 额度查询失败，请稍后重试'
+      },
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',

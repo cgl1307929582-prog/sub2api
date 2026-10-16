@@ -436,6 +436,14 @@
       </div>
     </template>
 
+    <DroidQuotaCell
+      v-else-if="account.platform === 'droid' && account.type === 'apikey'"
+      :usage="usageInfo"
+      :loading="loading"
+      :error="error"
+      @refresh="loadUsage({ source: 'active', bypassCache: true })"
+    />
+
     <!-- Multi-protocol API-key providers (CN vendors, OpenCode, Command Code):
          coding-plan / subscription quota windows or balance -->
     <template v-else-if="isMultiProtocolApiKeyPlatform(account.platform)">
@@ -689,6 +697,7 @@ import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
+import DroidQuotaCell from './DroidQuotaCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
@@ -740,6 +749,7 @@ const loading = ref(false)
 const activeQueryLoading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
+let usageLoadGeneration = 0
 watch(usageInfo, (usage) => {
   if (usage) emit('usage-loaded', usage)
 })
@@ -780,6 +790,7 @@ const showUsageWindows = computed(() => {
 })
 
 const shouldFetchUsage = computed(() => {
+  if (props.account.platform === 'droid') return props.account.type === 'apikey'
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }
@@ -1434,6 +1445,8 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     return
   }
 
+  const generation = ++usageLoadGeneration
+  const isCurrent = () => !unmounted.value && generation === usageLoadGeneration
   // Check cache
   if (!options?.bypassCache) {
     const cached = _usageCache.get(props.account.id)
@@ -1452,17 +1465,17 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
 			? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
 			: adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
-    if (!unmounted.value) {
+    if (isCurrent()) {
       usageInfo.value = result
       _usageCache.set(props.account.id, { data: result, ts: Date.now() })
     }
   } catch (e: any) {
-    if (!unmounted.value) {
+    if (isCurrent()) {
       error.value = t('common.error')
       console.error('Failed to load usage:', e)
     }
   } finally {
-    if (!unmounted.value) loading.value = false
+    if (isCurrent()) loading.value = false
   }
 }
 
@@ -1707,13 +1720,14 @@ watch(
   (nextToken, prevToken) => {
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
+    if (props.account.platform === 'droid') usageInfo.value = null
 
     if (isBatchManaged.value) {
       requestParentBatchUsage({ force: true })
       return
     }
 
-    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
+    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : props.account.platform === 'droid' ? 'active' : undefined
     _usageCache.delete(props.account.id)
     loadUsage({ source, bypassCache: true }).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)

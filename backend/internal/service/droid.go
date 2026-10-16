@@ -118,30 +118,37 @@ func prepareDroidRequest(request *http.Request, account *Account) (*http.Request
 	}
 	out.Header.Set("Authorization", "Bearer "+account.GetCredential("api_key"))
 	out.Header.Set("X-API-Provider", provider)
-	out.Header.Set("X-Factory-Client", "cli")
 	out.Header.Set("X-Session-ID", uuid.NewString())
 	out.Header.Set("X-Assistant-Message-ID", uuid.NewString())
 	out.Header.Set("Accept-Encoding", "identity")
 	if protocol == APIProtocolAnthropic {
 		out.Header.Set("X-API-Key", "placeholder")
 	}
+	if err := applyDroidClientHeaders(out.Header, account); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func applyDroidClientHeaders(header http.Header, account *Account) error {
 	ua := strings.TrimSpace(account.GetCredential("user_agent"))
 	if ua == "" {
 		ua = "factory-cli/" + droidClientVersion
 	}
 	if strings.ContainsAny(ua, "\r\n") {
-		return nil, errors.New("factory user agent is invalid")
+		return errors.New("factory user agent is invalid")
 	}
-	out.Header.Set("User-Agent", ua)
+	header.Set("User-Agent", ua)
+	header.Set("X-Factory-Client", "cli")
 	version := droidClientVersion
 	if strings.HasPrefix(ua, "factory-cli/") {
 		version = strings.TrimPrefix(ua, "factory-cli/")
 		if version == "" || strings.ContainsAny(version, " \t") {
-			return nil, errors.New("factory client version is invalid")
+			return errors.New("factory client version is invalid")
 		}
 	}
-	out.Header.Set("X-Client-Version", version)
-	return out, nil
+	header.Set("X-Client-Version", version)
+	return nil
 }
 
 // Factory requires its identity before caller instructions. RawMessage keeps
