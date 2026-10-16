@@ -670,7 +670,8 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
-			extra -> 'opencode_go_usage_snapshot'
+			extra -> 'opencode_go_usage_snapshot',
+			extra -> 'droid_model_catalog'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -699,6 +700,7 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		currentDroidModelCatalog       []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -713,6 +715,7 @@ func lockAndMergeAccountProbeExtra(
 		&opencodeGroupIdentityUnchanged,
 		&currentOpenCodeAutoRefresh,
 		&currentOpenCodeSnapshot,
+		&currentDroidModelCatalog,
 	); err != nil {
 		return nil, err
 	}
@@ -721,6 +724,16 @@ func lockAndMergeAccountProbeExtra(
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
+	// A form may have been opened before a model sync. Keep the latest catalog
+	// under the row lock so saving stale form data cannot undo that sync.
+	delete(extra, service.DroidModelCatalogExtraKey)
+	if account.IsDroid() {
+		if catalog, ok, err := decodeAccountExtraJSON(currentDroidModelCatalog); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.DroidModelCatalogExtraKey] = catalog
+		}
+	}
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,

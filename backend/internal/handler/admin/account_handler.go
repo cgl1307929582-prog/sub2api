@@ -11,7 +11,6 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2806,25 +2805,15 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	if account.IsDroid() {
-		ids := service.DefaultDroidModelIDs()
-		if mapping := account.GetModelMapping(); len(mapping) > 0 {
-			candidates := ids
-			ids = make([]string, 0, len(mapping))
-			for _, id := range candidates {
-				if account.IsModelSupported(id) {
-					ids = append(ids, id)
-				}
-			}
-			for id := range mapping {
-				if !strings.Contains(id, "*") && !slices.Contains(ids, id) {
-					ids = append(ids, id)
-				}
-			}
-			sort.Strings(ids)
-		}
+		ids := account.DroidModelIDs()
+		catalog := account.GetDroidModelCatalog()
 		models := make([]openai.Model, 0, len(ids))
 		for _, id := range ids {
-			models = append(models, openai.Model{ID: id, Object: "model", Type: "model", OwnedBy: service.PlatformDroid, DisplayName: id})
+			name := id
+			if catalog != nil && catalog.Metadata[id].DisplayName != "" {
+				name = catalog.Metadata[id].DisplayName
+			}
+			models = append(models, openai.Model{ID: id, Object: "model", Type: "model", OwnedBy: service.PlatformDroid, DisplayName: name})
 		}
 		response.Success(c, models)
 		return

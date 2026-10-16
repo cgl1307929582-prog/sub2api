@@ -53,9 +53,12 @@ type UpstreamModelMetadataSnapshot struct {
 }
 
 type UpstreamModelCatalog struct {
-	Models   []string                         `json:"models"`
-	Metadata map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
-	Warnings []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
+	Models            []string                         `json:"models"`
+	Metadata          map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
+	Warnings          []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
+	Source            string                           `json:"source,omitempty"`
+	SyncedAt          string                           `json:"synced_at,omitempty"`
+	UnsupportedModels []string                         `json:"unsupported_models,omitempty"`
 }
 
 type UpstreamModelSyncWarning struct {
@@ -213,6 +216,9 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // snapshot. When no model is complete, the existing account snapshot is left
 // untouched.
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
+	if account.IsDroid() {
+		return s.syncDroidModelCatalog(ctx, account)
+	}
 	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	liveListAvailable := err == nil
 	if err != nil {
@@ -740,6 +746,13 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 	if account == nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Account is required", nil)
 	}
+	if account.IsDroid() {
+		catalog, err := s.fetchDroidModelCatalog(ctx, account)
+		if err != nil {
+			return nil, nil, err
+		}
+		return catalog.Models, nil, nil
+	}
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)
@@ -903,7 +916,7 @@ func listVertexGeminiPublisherModels(location string, fetchPage func(page int, l
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
 	if account.IsDroid() {
-		return nil, newUpstreamModelSyncUnsupportedError("Factory uses a local compatibility catalog; live model discovery is not supported", nil)
+		return s.buildDroidModelsRequest(ctx, account)
 	}
 	switch {
 	case account.Platform == PlatformAntigravity:

@@ -91,8 +91,6 @@ export function isKnownPlatform(platform: string | null | undefined): boolean {
 export function supportsUpstreamModelSync(platform: string | null | undefined): boolean {
   const spec = getPlatformSpec(platform?.trim().toLowerCase())
   if (!spec) return false
-  // Factory's internal model discovery contract is not verified; use the local catalog.
-  if (spec.id === 'droid') return false
   return !!spec.multi_protocol || ['anthropic', 'openai', 'gemini', 'antigravity', 'grok'].includes(spec.id)
 }
 
