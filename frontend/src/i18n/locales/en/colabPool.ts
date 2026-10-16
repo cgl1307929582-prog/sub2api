@@ -95,6 +95,7 @@ export default {
   "requests": "Requests",
   "input": "Input tokens",
   "output": "Output tokens",
+  "requestDuration": "Total duration",
   "duration": "Average total duration",
   "cost": "User charges (USD)",
   "recentCalls": "Recent Sub2API requests",

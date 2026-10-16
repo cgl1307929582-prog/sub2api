@@ -45,6 +45,17 @@ describe('native Colab management', () => {
     await render(); vi.mocked(api.snapshot).mockRejectedValue(new Error('offline')); await button('colabPool.refresh').trigger('click'); await flushPromises()
     expect(wrapper.text()).toContain('123.4'); expect(wrapper.get('[role="alert"]').text()).toContain('colabPool.stale')
   })
+  it('retains the last hardware sample when only telemetry becomes unavailable', async () => {
+    const live = fixture()
+    live.state.instances = [{ id: 26, account_id: 1, email: 'pool@example.test', state: 'ready', phase: '', reason: '', created_at: Date.now()/1000, ended_at: null, last_active: null, running: 0, waiting: 0, tps: 0, gen_tokens: 0 }]
+    live.telemetry_available = true
+    live.telemetry = { resources: { '26': { cpu: { percent: 44, model: 'Recorded CPU', logical_cores: 48, load_average: [] }, received_at: Date.now()/1000 } }, calls: { instances: {} } }
+    vi.mocked(api.snapshot).mockResolvedValue(live)
+    await render('instances'); expect(wrapper.text()).toContain('Recorded CPU')
+    vi.mocked(api.snapshot).mockResolvedValue({ ...live, telemetry: null, telemetry_available: false })
+    await button('colabPool.refresh').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('Recorded CPU'); expect(wrapper.text()).toContain('colabPool.resourceStale')
+  })
   it('opens account authorization without starting a flow or sending a credential', async () => {
     await render('accounts'); await button('colabPool.addAccount').trigger('click')
     expect(wrapper.text()).toContain('colabPool.authHelp'); expect(api.beginAuth).not.toHaveBeenCalled(); expect(api.finishAuth).not.toHaveBeenCalled()
