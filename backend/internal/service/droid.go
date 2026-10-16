@@ -185,7 +185,7 @@ func prepareDroidBody(payload []byte, protocol string) ([]byte, error) {
 	if json.Unmarshal(payload, &fields) != nil || fields == nil {
 		return nil, errors.New("factory request body is invalid")
 	}
-	stripDroidEnvironmentNotice(fields, protocol)
+	normalizeDroidPromptNotice(fields, protocol)
 	switch protocol {
 	case APIProtocolAnthropic:
 		system, err := prependDroidSystem(fields["system"])

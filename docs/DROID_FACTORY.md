@@ -10,20 +10,24 @@
 - 共用 sub2api 的网关鉴权、分组、账号调度、并发限制、配额、计费、错误状态与临时冷却。
 - 模型目录和默认协议在平台 profile 中定义，生成前端清单。后台测试模型选择、公共 `/v1/models`、白名单选择器均有 Droid 候选模型；支持自定义映射。
 - Factory 请求头在统一出站边界生成；每次请求独立生成 session/message ID，删除调用者认证、Cookie 与会话标识，并禁止 HTTP 重定向。
-- 默认客户端版本为 `0.242.0`，同时设置 User-Agent 与 X-Client-Version；显式覆盖 `factory-cli/<version>` 时同步两者。三个协议均在调用者指令之前补入 Factory 要求的 Droid 身份前缀，重复准备请求不会重复添加。缓存标记、工具参数、大整数和 signed thinking 保持原值；普通文本的固定环境提示兼容处理见下文。
+- 默认客户端版本为 `0.242.0`，同时设置 User-Agent 与 X-Client-Version；显式覆盖 `factory-cli/<version>` 时同步两者。三个协议均在调用者指令之前补入 Factory 要求的 Droid 身份前缀，重复准备请求不会重复添加。缓存标记、工具参数、大整数和 signed thinking 保持原值；普通文本的固定提示兼容处理见下文。
 - 管理端 Anthropic 账号测试使用 Droid 身份提示词。通用测试正文中的 Claude Code 身份提示词会导致 Factory 返回 403，即使前面已加入 Droid 身份；因此只替换该测试自动生成的身份，不替换网关调用者的身份指令。已用同一服务器、Key、`claude-opus-4-6` 对照确认这一差异；Key 和模型可用时也可能因测试正文不兼容而报 403。
 - 401 使用现有 API Key 失效处理；429 优先采用 `Retry-After`，缺失时使用现有可配置的短时冷却。连接拒绝、DNS、代理认证等持久故障保留冷却分类，但丢弃可能含凭据的错误原文。
 - 响应正文、SSE 和响应头中的完整 API Key 回显会被替换；正文规范等价的 ASCII JSON 转义，错误体和 SSE 错误帧进一步递归处理嵌套 JSON 字符串。SSE 完整行及时输出；错误 JSON 上限 1 MiB/16 层，超限使用固定安全错误，SSE 单行超过 1 MiB 则安全中止。
 - Droid 保留调用者取消上下文。已经输出部分流后不换账号重放；跨协议 Anthropic 转换必须收到 `message_stop`，截断、错误事件和非法 JSON 不再伪造成功终态。Responses 转换失败发送保留响应 ID/事件序号的 `response.failed`；排队心跳之后的本地预检错误也使用对应 SSE 格式。
 - 不新增数据库迁移。该基线已有迁移 `242_drop_platform_check_constraints.sql`，平台约束改由应用登记表统一校验。这里没有连接或迁移任何生产数据库。
 
-## 固定环境提示兼容处理
+## 固定提示兼容处理
 
 仅在 Droid / Factory 出站副本中删除普通文本里的固定句子 `You have been invoked in the following environment`（含紧跟的冒号），保留后续工作目录、Shell 和其他内容。Messages 的 system、普通消息与 tool_result，Responses 的 instructions、input 与 function_call_output，以及 Chat Completions 的消息文本均经过同一处理。客户端原始请求和其他渠道不变。
 
-2026-10-16 对同一 Key、`claude-opus-5-5` 的诊断发现：该句子出现在引用的工具日志中也会触发 Factory HTTP 403，官方 Droid CLI 0.242.0 的最小对照同样复现。此处理只针对已确认的固定文本，不保证解决其他 403。工具调用参数、工具定义、metadata、图片/文档数据、思考文本与签名不作改写；该句子若位于这些字段仍可能被上游拒绝。若一个文本块仅有该句子，则保留 `[Environment]` 标题，避免产生非法空文本块。
+Pi 压缩对话后添加的固定开场白 `The conversation history before this point was compacted into the following summary:`，在上述普通文本字段中替换为 `[Conversation summary]`。仅替换完整、大小写一致的固定句子，后续摘要正文、换行和 `<summary>…</summary>` 标签原样保留，不删除或重新生成摘要；重试不会重复改写。2026-10-16 同一 Key、同一模型的真实对照中，该开场白单独出现也返回 403；原摘要单独发送、保留摘要标签或改用中性标题均返回 200，故不按摘要长度或内容作泛化过滤。上游仅返回通用 Forbidden，未公开具体拒绝规则。
+
+2026-10-16 对同一 Key、`claude-opus-5-5` 的诊断发现：上述环境开场白出现在引用的工具日志中也会触发 Factory HTTP 403，官方 Droid CLI 0.242.0 的最小对照同样复现。此处理只针对已确认的固定文本，不保证解决其他 403。工具调用参数、工具定义、metadata、图片/文档数据、思考文本与签名不作改写；该句子若位于这些字段仍可能被上游拒绝。若一个文本块仅有固定环境句子，则保留 `[Environment]` 标题，避免产生非法空文本块。
 
 同日通过实际出站代码进行 6 次真实 Factory 请求验证：普通对照、环境说明、仅有该句子的输入，以及三段已脱敏的故障前工具输出，均返回 HTTP 200、`OK` 和完整 `message_stop`。这是上述固定文本的兼容验证，不代表任意会话均能被上游接受。
+
+同日摘要兼容处理另通过实际网关代码完成 6 次真实请求：Messages、Responses、Chat 的摘要输入，Messages system、tool_result，以及同时含环境提示与摘要开场白的输入，均返回 HTTP 200、对应协议的完整成功终态和摘要中的校验码。单元回归逐字核对摘要正文、Unicode、换行及标签，并覆盖其他渠道、原始请求与签名/结构化字段不变。
 
 ## 路由与模型
 
