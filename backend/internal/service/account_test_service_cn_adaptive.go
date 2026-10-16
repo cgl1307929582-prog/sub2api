@@ -259,6 +259,12 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Anthropic test payload")
 	}
+	if account.IsDroid() {
+		// Factory rejects the generic probe's Claude Code identity with 403,
+		// even after the transport prepends its Droid identity. This replaces
+		// only our synthetic test instructions, never caller gateway prompts.
+		payload["system"] = droidSystemPrompt
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
