@@ -1313,3 +1313,9 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# Native Colab GPU Pool administrator console (optional private worker).
+# Keep the control credential in a read-only file, never in account credentials.
+colab_pool:
+  control_url: ""
+  control_secret_file: ""

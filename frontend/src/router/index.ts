@@ -514,6 +514,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/colab',
+    name: 'AdminColabPool',
+    component: () => import('@/views/admin/ColabPoolView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Colab GPU Pool', titleKey: 'colabPool.title', descriptionKey: 'colabPool.description' }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),

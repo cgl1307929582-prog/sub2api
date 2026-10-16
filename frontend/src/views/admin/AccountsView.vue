@@ -224,8 +224,9 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
+              <router-link v-if="row.platform === 'colab'" to="/admin/colab" class="font-medium text-primary-600 dark:text-primary-400">{{ value }}</router-link>
               <HelpTooltip
-                v-if="accountHomepageUrl(row)"
+                v-else-if="accountHomepageUrl(row)"
                 :content="accountHomepageUrl(row)"
                 width-class="w-max max-w-sm break-all"
                 class="-ml-1 self-start"
