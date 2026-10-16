@@ -100,7 +100,7 @@ describe('ModelWhitelistSelector', () => {
     resetPlatformCatalog()
   })
 
-  it.each(['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'])(
+  it.each(['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline', 'droid'])(
     'supports upstream sync for %s saved accounts and creation previews',
     (platform) => {
       const wrappers = [
@@ -158,6 +158,47 @@ describe('ModelWhitelistSelector', () => {
 
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     expect(showInfo).toHaveBeenCalledWith(expect.stringContaining('gpt-latest → deepseek-chat'))
+  })
+
+  it('adds fresh Factory catalog models to selection and dropdown without losing existing aliases', async () => {
+    syncUpstreamModels.mockResolvedValue({
+      models: ['claude-future-test', 'gpt-future-test'],
+      source: 'https://docs.factory.com/models.md',
+      synced_at: '2026-10-16T00:00:00Z',
+      unsupported_models: ['gemini-future-test'],
+      metadata: { 'claude-future-test': { display_name: 'Claude Future' } }
+    })
+    const wrapper = mountSelector({ platform: 'droid', accountId: 2, modelValue: ['legacy-model', 'my-alias'] })
+    const syncButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!
+    await syncButton.trigger('click')
+    await flushPromises()
+    expect(syncUpstreamModels).toHaveBeenCalledWith(2)
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['legacy-model', 'my-alias', 'claude-future-test', 'gpt-future-test']]])
+    expect(wrapper.get('[data-testid="factory-catalog-info"] a').attributes('href')).toBe('https://docs.factory.com/models')
+    expect(wrapper.text()).toContain('admin.accounts.factoryModelCatalogSyncedAt')
+    expect(wrapper.text()).toContain('admin.accounts.factoryModelCatalogUnsupported')
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(findModelRow(wrapper, 'claude-future-test').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="model-option"]').some(row => row.text().includes('gemini-future-test'))).toBe(false)
+
+    syncUpstreamModels.mockRejectedValue(new Error('temporary catalog failure'))
+    await syncButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toHaveLength(1)
+    expect(findModelRow(wrapper, 'claude-future-test').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.accounts.factoryModelCatalogSyncedAt')
+    expect(showError).toHaveBeenCalledOnce()
+  })
+
+  it('loads the persisted Factory catalog into the dropdown after reopening an account', async () => {
+    const wrapper = mountSelector({ platform: 'droid', accountId: 2, catalog: {
+      models: ['claude-persisted-future'], synced_at: '2026-10-15T00:00:00Z',
+      metadata: { 'claude-persisted-future': { display_name: 'Future Display Name' } }
+    } })
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    await wrapper.get('input[placeholder="admin.accounts.searchModels"]').setValue('Future Display Name')
+    expect(findModelRow(wrapper, 'claude-persisted-future').exists()).toBe(true)
+    expect(syncUpstreamModels).not.toHaveBeenCalled()
   })
 
   it('keeps the existing duplicate identity warning before checking mappings', async () => {

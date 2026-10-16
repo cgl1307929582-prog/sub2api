@@ -33,8 +33,8 @@ const concretePlatforms = [
 ]
 
 describe('platform option catalogs', () => {
-  it('keeps the unverified Factory model catalog local', () => {
-    expect(supportsUpstreamModelSync('droid')).toBe(false)
+  it('allows syncing the Factory official model catalog', () => {
+    expect(supportsUpstreamModelSync('droid')).toBe(true)
   })
   it('exposes every concrete account platform', () => {
     expect(CONCRETE_PLATFORM_OPTIONS.map((option) => option.value)).toEqual(concretePlatforms)

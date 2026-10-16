@@ -79,6 +79,56 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 	return router
 }
 
+func TestDroidCatalogAdminSyncAndPreview(t *testing.T) {
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: service.Account{
+		ID: 2, Platform: service.PlatformDroid, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "factory_test_secret"},
+	}}
+	for _, route := range []string{"/api/v1/admin/accounts/2/models/sync-upstream", "/api/v1/admin/accounts/models/sync-upstream-preview"} {
+		upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader("| Model | Model ID |\n| --- | --- |\n| Claude Future | `claude-future-test` |\n| Gemini Future | `gemini-future-test` |\n"))}}
+		router := setupSyncUpstreamModelsRouter(svc, upstream)
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, route, strings.NewReader(`{"platform":"droid","type":"apikey","api_key":"factory_test_secret"}`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var resp struct {
+			Data service.UpstreamModelCatalog `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Equal(t, []string{"claude-future-test"}, resp.Data.Models)
+		require.Equal(t, service.DroidModelCatalogURL, resp.Data.Source)
+		require.NotEmpty(t, resp.Data.SyncedAt)
+		require.Equal(t, []string{"gemini-future-test"}, resp.Data.UnsupportedModels)
+		require.NotContains(t, rec.Body.String(), "factory_test_secret")
+	}
+}
+
+func TestDroidCatalogAdminTestPickerUsesSavedModelsAndNames(t *testing.T) {
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: service.Account{
+		ID: 2, Platform: service.PlatformDroid, Type: service.AccountTypeAPIKey,
+		Extra: map[string]any{service.DroidModelCatalogExtraKey: &service.UpstreamModelCatalog{
+			Source: service.DroidModelCatalogURL, Models: []string{"claude-future-test"},
+			Metadata: map[string]service.UpstreamModelMetadata{"claude-future-test": {DisplayName: "Claude Future"}},
+		}},
+	}}
+	router := setupAvailableModelsRouter(svc)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/2/models", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "claude-future-test", resp.Data[0].ID)
+	require.Equal(t, "Claude Future", resp.Data[0].DisplayName)
+}
+
 func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),

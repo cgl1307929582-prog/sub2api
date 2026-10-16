@@ -119,6 +119,13 @@
       </button>
     </div>
 
+    <div v-if="isDroidCatalog" class="mb-3 space-y-1 text-xs text-gray-500 dark:text-gray-400" data-testid="factory-catalog-info">
+      <a href="https://docs.factory.com/models" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:underline dark:text-primary-400">{{ t('admin.accounts.factoryModelCatalogSource') }}</a>
+      <p>{{ t('admin.accounts.factoryModelCatalogHint') }}</p>
+      <p v-if="catalogSyncedAt">{{ t('admin.accounts.factoryModelCatalogSyncedAt', { time: catalogSyncedAt }) }}</p>
+      <p v-if="unsupportedModelCount">{{ t('admin.accounts.factoryModelCatalogUnsupported', { count: unsupportedModelCount }) }}</p>
+    </div>
+
     <!-- Custom Model Input -->
     <div class="mb-3">
       <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.customModelName') }}</label>
@@ -149,7 +156,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
-import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { SyncUpstreamModelsResult, SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -165,6 +172,12 @@ const props = defineProps<{
   platform?: string
   platforms?: string[]
   accountId?: number
+  catalog?: {
+    models: string[]
+    synced_at?: string
+    unsupported_models?: string[]
+    metadata?: Record<string, { display_name?: string }>
+  }
   syncCredentials?: {
     platform: string
     type: string
@@ -186,6 +199,7 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const lastCatalog = ref<SyncUpstreamModelsResult | null>(null)
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -214,6 +228,16 @@ const canSyncUpstream = computed(() => {
   return false
 })
 
+const isDroidCatalog = computed(() => normalizedPlatforms.value.includes('droid') || props.syncCredentials?.platform === 'droid')
+const currentCatalog = computed(() => lastCatalog.value ?? props.catalog)
+const catalogSyncedAt = computed(() => {
+  const value = currentCatalog.value?.synced_at
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+})
+const unsupportedModelCount = computed(() => currentCatalog.value?.unsupported_models?.length ?? 0)
+
 const availableOptions = computed(() => {
   if (normalizedPlatforms.value.length === 0) {
     return allModels
@@ -226,7 +250,17 @@ const availableOptions = computed(() => {
     }
   }
 
-  return allModels.filter(model => allowedModels.has(model.value))
+  const options = allModels.filter(model => allowedModels.has(model.value))
+  if (isDroidCatalog.value) {
+    const seen = new Set(options.map(model => model.value))
+    for (const id of currentCatalog.value?.models ?? []) {
+      if (!seen.has(id)) {
+        options.push({ value: id, label: currentCatalog.value?.metadata?.[id]?.display_name || id })
+        seen.add(id)
+      }
+    }
+  }
+  return options
 })
 
 const filteredModels = computed(() => {
@@ -309,6 +343,8 @@ const syncUpstreamModels = async () => {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
     }
+
+    lastCatalog.value = result
 
     if (!props.accountId) {
       emit('upstream-synced')

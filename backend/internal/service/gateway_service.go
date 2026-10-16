@@ -1438,6 +1438,13 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
+		if acc.IsDroid() && acc.GetDroidModelCatalog() != nil {
+			for _, id := range acc.DroidModelIDs() {
+				modelSet[id] = struct{}{}
+			}
+			hasAnyMapping = true
+			continue
+		}
 		// Passthrough routing accepts models independently of model_mapping, so a
 		// stale mapping on a passthrough account must not narrow the public list.
 		// Treat it like an unmapped account: skip its mapping here and let
