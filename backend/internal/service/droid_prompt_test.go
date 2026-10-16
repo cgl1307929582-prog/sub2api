@@ -7,18 +7,37 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-func TestDroidEnvironmentNoticeInPromptAndToolResults(t *testing.T) {
-	const notice = "You have been invoked in the following environment:"
-	const environment = "# Environment\n" + notice + "\n - Working directory: /workspace/project\n - Shell: zsh"
-	quoted, err := json.Marshal(environment)
+func TestDroidPromptNoticesInPromptAndToolResults(t *testing.T) {
+	const summary = "\n\n<summary>\n## 已完成\n- 保留工具结果、换行与 emoji：✅\n- Checkpoint: SUM-7319\n- JSON: {\"number\":9007199254740993}\n\n## 下一步\n继续检查 /workspace/project。\n</summary>\n"
+	for _, tc := range []struct{ name, notice, text, want string }{
+		{
+			"environment", "You have been invoked in the following environment:",
+			"# Environment\nYou have been invoked in the following environment:\n - Working directory: /workspace/project\n - Shell: zsh",
+			"# Environment\n\n - Working directory: /workspace/project\n - Shell: zsh",
+		},
+		{
+			"compaction", "The conversation history before this point was compacted into the following summary:",
+			"The conversation history before this point was compacted into the following summary:" + summary,
+			"[Conversation summary]" + summary,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testDroidPromptNoticeLocations(t, tc.notice, tc.text, tc.want)
+		})
+	}
+}
+
+func testDroidPromptNoticeLocations(t *testing.T, notice, text, want string) {
+	t.Helper()
+	quoted, err := json.Marshal(text)
 	require.NoError(t, err)
-	want := "# Environment\n\n - Working directory: /workspace/project\n - Shell: zsh"
 	for _, tc := range []struct {
 		name, protocol, payload, path string
 	}{
@@ -54,11 +73,24 @@ func TestDroidEnvironmentNoticeInPromptAndToolResults(t *testing.T) {
 	}
 }
 
-func TestDroidEnvironmentNoticePreservesStructuredAndSignedFields(t *testing.T) {
-	const payload = `{"model":"claude-opus-5-5","system":[{"type":"text","text":"# Environment\nYou have been invoked in the following environment:\nkeep this","cache_control":{"type":"ephemeral"}}],"metadata":{"user_id":"You have been invoked in the following environment:"},"tools":[{"name":"lookup","description":"You have been invoked in the following environment:","input_schema":{"type":"object","maximum":9007199254740993}}],"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"You have been invoked in the following environment:","signature":"keep-signature"},{"type":"redacted_thinking","data":"signed-data"},{"type":"tool_use","id":"call_1","name":"lookup","input":{"query":"You have been invoked in the following environment:","number":9007199254740993}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","is_error":true,"content":[{"type":"text","text":"before You have been invoked in the following environment: after","cache_control":{"type":"ephemeral"}},{"type":"image","source":{"type":"url","url":"https://example.com/image.png"}},{"type":"document","source":{"type":"text","media_type":"text/plain","data":"You have been invoked in the following environment:"}}]}]}]}`
+func TestDroidPromptNoticesPreserveStructuredAndSignedFields(t *testing.T) {
+	for _, tc := range []struct{ name, notice, replacement string }{
+		{"environment", "You have been invoked in the following environment:", ""},
+		{"compaction", "The conversation history before this point was compacted into the following summary:", "[Conversation summary]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testDroidPromptPreservesStructuredFields(t, tc.notice, tc.replacement)
+		})
+	}
+}
+
+func testDroidPromptPreservesStructuredFields(t *testing.T, notice, replacement string) {
+	t.Helper()
+	payload := `{"model":"claude-opus-5-5","system":[{"type":"text","text":"# Environment\nYou have been invoked in the following environment:\nkeep this","cache_control":{"type":"ephemeral"}}],"metadata":{"user_id":"You have been invoked in the following environment:"},"tools":[{"name":"lookup","description":"You have been invoked in the following environment:","input_schema":{"type":"object","maximum":9007199254740993}}],"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"You have been invoked in the following environment:","signature":"keep-signature"},{"type":"redacted_thinking","data":"signed-data"},{"type":"tool_use","id":"call_1","name":"lookup","input":{"query":"You have been invoked in the following environment:","number":9007199254740993}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","is_error":true,"content":[{"type":"text","text":"before You have been invoked in the following environment: after","cache_control":{"type":"ephemeral"}},{"type":"image","source":{"type":"url","url":"https://example.com/image.png"}},{"type":"document","source":{"type":"text","media_type":"text/plain","data":"You have been invoked in the following environment:"}}]}]}]}`
+	payload = strings.ReplaceAll(payload, "You have been invoked in the following environment:", notice)
 	out, err := prepareDroidBody([]byte(payload), APIProtocolAnthropic)
 	require.NoError(t, err)
-	require.Equal(t, "before  after", gjson.GetBytes(out, "messages.1.content.0.content.0.text").String())
+	require.Equal(t, "before "+replacement+" after", gjson.GetBytes(out, "messages.1.content.0.content.0.text").String())
 	for originalPath, preparedPath := range map[string]string{
 		"system.0.cache_control":           "system.1.cache_control",
 		"metadata":                         "metadata",
@@ -78,6 +110,7 @@ func TestDroidEnvironmentNoticePreservesStructuredAndSignedFields(t *testing.T) 
 		{APIProtocolResponses, `{"input":[{"type":"function_call","name":"lookup","arguments":"{\"text\":\"You have been invoked in the following environment:\"}"},{"type":"reasoning","encrypted_content":"signed-data","summary":[{"type":"summary_text","text":"You have been invoked in the following environment:"}]}]}`, "input"},
 		{APIProtocolChatCompletions, `{"messages":[{"role":"assistant","content":null,"reasoning_content":"You have been invoked in the following environment:","tool_calls":[{"type":"function","function":{"name":"lookup","arguments":"{\"text\":\"You have been invoked in the following environment:\"}"}}]}]}`, "messages.1"},
 	} {
+		tc.payload = strings.ReplaceAll(tc.payload, "You have been invoked in the following environment:", notice)
 		out, err = prepareDroidBody([]byte(tc.payload), tc.protocol)
 		require.NoError(t, err)
 		originalPath := "input"
@@ -97,16 +130,33 @@ func TestDroidEnvironmentNoticeOnlyTextRemainsValid(t *testing.T) {
 		raw, err := json.Marshal(input)
 		require.NoError(t, err)
 		var text string
-		require.NoError(t, json.Unmarshal(stripDroidEnvironmentText(raw), &text))
+		require.NoError(t, json.Unmarshal(normalizeDroidPromptText(raw), &text))
 		require.Equal(t, "[Environment]", text)
 	}
 	for _, raw := range []string{`"Keep all of these instructions"`, `"# Environment\nWorking directory: /workspace"`, `null`, `42`, `{}`, `[]`} {
-		require.Equal(t, raw, string(stripDroidEnvironmentText(json.RawMessage(raw))))
+		require.Equal(t, raw, string(normalizeDroidPromptText(json.RawMessage(raw))))
 	}
 }
 
-func TestDroidEnvironmentNoticeOnlyChangesFactoryOutboundCopy(t *testing.T) {
-	const payload = `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"You have been invoked in the following environment:\nWorking directory: /workspace"}],"max_tokens":16}`
+func TestDroidCompactionNoticeExactMatch(t *testing.T) {
+	const notice = "The conversation history before this point was compacted into the following summary:"
+	for _, tc := range []struct{ text, want string }{
+		{notice, "[Conversation summary]"},
+		{"before\n" + notice + "\nafter", "before\n[Conversation summary]\nafter"},
+		{notice + "\n" + notice, "[Conversation summary]\n[Conversation summary]"},
+		{"The conversation history before this point was compacted into the following summary", "The conversation history before this point was compacted into the following summary"},
+		{"An unrelated conversation summary must be preserved.", "An unrelated conversation summary must be preserved."},
+	} {
+		raw, err := json.Marshal(tc.text)
+		require.NoError(t, err)
+		var text string
+		require.NoError(t, json.Unmarshal(normalizeDroidPromptText(raw), &text))
+		require.Equal(t, tc.want, text)
+	}
+}
+
+func TestDroidPromptNoticesOnlyChangeFactoryOutboundCopy(t *testing.T) {
+	const payload = `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"You have been invoked in the following environment:\nWorking directory: /workspace\nThe conversation history before this point was compacted into the following summary:\n\n<summary>Checkpoint: SUM-7319</summary>"}],"max_tokens":16}`
 	for _, platform := range []string{PlatformDroid, PlatformAnthropic} {
 		t.Run(platform, func(t *testing.T) {
 			account := droidTestAccount()
@@ -122,7 +172,7 @@ func TestDroidEnvironmentNoticeOnlyChangesFactoryOutboundCopy(t *testing.T) {
 				require.Equal(t, int64(len(body)), outbound.ContentLength)
 				if platform == PlatformDroid {
 					require.NotContains(t, string(body), "You have been invoked")
-					require.Contains(t, string(body), "Working directory: /workspace")
+					require.Equal(t, "\nWorking directory: /workspace\n[Conversation summary]\n\n<summary>Checkpoint: SUM-7319</summary>", gjson.GetBytes(body, "messages.0.content").String())
 				} else {
 					require.Same(t, request, outbound)
 					require.Equal(t, payload, string(body))
