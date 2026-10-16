@@ -45,6 +45,7 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
+		registerColabPoolRoutes(admin, h)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)

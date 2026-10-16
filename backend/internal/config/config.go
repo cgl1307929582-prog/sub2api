@@ -65,7 +65,13 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 // 可通过 gateway.models_list_read_max_bytes 配置项覆盖。
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
+type ColabPoolConfig struct {
+	ControlURL        string `mapstructure:"control_url"`
+	ControlSecretFile string `mapstructure:"control_secret_file"`
+}
+
 type Config struct {
+	ColabPool               ColabPoolConfig               `mapstructure:"colab_pool"`
 	Server                  ServerConfig                  `mapstructure:"server"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
@@ -2708,6 +2714,8 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("dingtalk_connect.sync_corp_email", false)
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_key", "")
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_name", "")
+	viper.SetDefault("colab_pool.control_url", "")
+	viper.SetDefault("colab_pool.control_secret_file", "")
 }
 
 func (c *Config) Validate() error {

@@ -1,4 +1,8 @@
-# Colab / GPU Pool channel
+# Colab / GPU Pool
+
+For the native administrator console and private worker deployment, see
+[NATIVE-CONSOLE.md](NATIVE-CONSOLE.md). New installations should use the private
+connection; the public-domain setup below documents the legacy channel adapter.
 
 This adapter connects an existing Colab GPU Pool to the native `colab` platform
 in Sub2API. It preserves the Pool's OAuth accounts, autoscaling, rotation and

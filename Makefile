@@ -11,6 +11,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/account/__tests__/OpenAIQuotaResetCell.spark_shadow.spec.ts \
 	src/components/account/__tests__/AccountUsageCell.spec.ts \
 	src/components/account/__tests__/DroidQuotaCell.spec.ts \
+	src/components/account/__tests__/ColabPoolCell.spec.ts \
+	src/api/admin/__tests__/colabPool.spec.ts \
+	src/views/admin/__tests__/ColabPoolView.spec.ts \
 	src/constants/__tests__/platforms.spec.ts \
 	src/components/account/__tests__/credentialsBuilder.platformCatalog.spec.ts \
 	src/components/account/__tests__/CreateAccountModal.spec.ts \
