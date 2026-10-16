@@ -11,6 +11,7 @@
 - 模型目录和默认协议在平台 profile 中定义，生成前端清单。后台测试模型选择、公共 `/v1/models`、白名单选择器均有 Droid 候选模型；支持自定义映射。
 - Factory 请求头在统一出站边界生成；每次请求独立生成 session/message ID，删除调用者认证、Cookie 与会话标识，并禁止 HTTP 重定向。
 - 默认客户端版本为 `0.242.0`，同时设置 User-Agent 与 X-Client-Version；显式覆盖 `factory-cli/<version>` 时同步两者。三个协议均在调用者指令之前补入 Factory 要求的 Droid 身份前缀，重复准备请求不会重复添加。原有系统内容块、缓存标记、工具参数、大整数和 signed thinking 保持原值。
+- 管理端 Anthropic 账号测试使用 Droid 身份提示词。通用测试正文中的 Claude Code 身份提示词会导致 Factory 返回 403，即使前面已加入 Droid 身份；因此只替换该测试自动生成的身份，不改写网关调用者的系统指令。已用同一服务器、Key、`claude-opus-4-6` 对照确认这一差异；Key 和模型可用时也可能因测试正文不兼容而报 403。
 - 401 使用现有 API Key 失效处理；429 优先采用 `Retry-After`，缺失时使用现有可配置的短时冷却。连接拒绝、DNS、代理认证等持久故障保留冷却分类，但丢弃可能含凭据的错误原文。
 - 响应正文、SSE 和响应头中的完整 API Key 回显会被替换；正文规范等价的 ASCII JSON 转义，错误体和 SSE 错误帧进一步递归处理嵌套 JSON 字符串。SSE 完整行及时输出；错误 JSON 上限 1 MiB/16 层，超限使用固定安全错误，SSE 单行超过 1 MiB 则安全中止。
 - Droid 保留调用者取消上下文。已经输出部分流后不换账号重放；跨协议 Anthropic 转换必须收到 `message_stop`，截断、错误事件和非法 JSON 不再伪造成功终态。Responses 转换失败发送保留响应 ID/事件序号的 `response.failed`；排队心跳之后的本地预检错误也使用对应 SSE 格式。

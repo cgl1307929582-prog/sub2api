@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -96,6 +97,30 @@ func TestDroidAccountConnectionUsesSameTransport(t *testing.T) {
 			require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 		})
 	}
+}
+
+func TestDroidAccountTestDoesNotInjectClaudeCodeIdentity(t *testing.T) {
+	for _, model := range []string{"claude-opus-4-6", "claude-haiku-4-5-20251001"} {
+		t.Run(model, func(t *testing.T) {
+			account := droidTestAccount()
+			svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNAnthropicTestResponse())
+			c, recorder := newTestContext()
+			require.NoError(t, svc.TestAccountConnection(c, account.ID, model, "hi", AccountTestModeDefault))
+			// Factory rejects the generic probe's Claude Code identity with 403,
+			// even when the shared transport has prepended the Droid identity.
+			require.NotContains(t, string(upstream.lastBody), claudeCodeSystemPrompt)
+			require.Equal(t, droidSystemPrompt, gjson.GetBytes(upstream.lastBody, "system").String())
+			require.Equal(t, "hi", gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String())
+			require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+			require.Contains(t, recorder.Body.String(), `"success":true`)
+		})
+	}
+	// Other providers still use the original Claude Code probe payload.
+	payload, err := createTestPayload("claude-opus-4-6")
+	require.NoError(t, err)
+	encoded, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), claudeCodeSystemPrompt)
 }
 
 func TestDroidNativeMessagesPreservesToolsThinkingAndUsage(t *testing.T) {
