@@ -130,6 +130,53 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('loads Droid quota for API-key accounts and forces refresh on demand', async () => {
+    getUsage.mockResolvedValue({ droid_quota: null, error_code: 'quota_unknown' })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 60101, platform: 'droid', type: 'apikey' }) }
+    })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledWith(60101)
+    expect(wrapper.find('[data-test="droid-quota"]').exists()).toBe(true)
+    await wrapper.get('[data-test="droid-refresh"]').trigger('click')
+    await flushPromises()
+    expect(getUsage).toHaveBeenLastCalledWith(60101, 'active', true)
+    wrapper.unmount()
+  })
+
+  it('routes desktop Droid quota loading and forced refresh through the parent batch', async () => {
+    const account = makeAccount({ id: 60102, platform: 'droid', type: 'apikey' })
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, { props: { account, requestBatchedUsage } })
+    await flushPromises()
+    expect(requestBatchedUsage).toHaveBeenCalledWith(account, undefined)
+    expect(getUsage).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="droid-refresh"]').trigger('click')
+    expect(requestBatchedUsage).toHaveBeenLastCalledWith(account, { force: true })
+    wrapper.unmount()
+  })
+
+  it('does not restore an old Droid result after an account edit forces a newer query', async () => {
+    const quota = (cents: number) => ({ droid_quota: {
+      standard: null, core: null, extra_usage_balance_cents: cents,
+      fetched_at: '2026-10-16T02:39:00Z', stale: false
+    } })
+    let resolveOld!: (result: ReturnType<typeof quota>) => void
+    getUsage.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      .mockResolvedValueOnce(quota(200))
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 60103, platform: 'droid', type: 'apikey' }), manualRefreshToken: 0 }
+    })
+    await wrapper.setProps({ manualRefreshToken: 1 })
+    await flushPromises()
+    expect(getUsage).toHaveBeenLastCalledWith(60103, 'active', true)
+    expect(wrapper.get('[data-test="droid-extra-balance"]').text()).toContain('$2.00')
+    resolveOld(quota(100))
+    await flushPromises()
+    expect(wrapper.get('[data-test="droid-extra-balance"]').text()).toContain('$2.00')
+    wrapper.unmount()
+  })
+
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {

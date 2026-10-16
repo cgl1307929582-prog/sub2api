@@ -1046,6 +1046,7 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"opencode.ai",
 	"typesafe.ai",
 	"commandcode.ai",
+	"factory.ai",
 	"cline.bot",
 }
 

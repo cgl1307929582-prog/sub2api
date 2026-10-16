@@ -42,6 +42,8 @@ type ProviderProfile struct {
 	// DefaultTestModel 是管理端连接测试未指定模型时使用的模型；空值时按各协议的
 	// 通用默认模型。
 	DefaultTestModel string
+	// CandidateModels is a local compatibility list, not verified account access.
+	CandidateModels []string
 	// ModelCatalog 表示上游 {Chat Completions 基址}/models 为每个模型给出
 	// supported_endpoints；按模型分流时据此判断模型支持哪些协议（见 model_protocol_catalog.go）。
 	ModelCatalog bool
@@ -88,6 +90,29 @@ func (p *ProviderProfile) SupportsProtocol(mode, protocol string) bool {
 // 上游协议分流方式、Responses 路径约定与 IsMultiProtocolAPIKeyProvider 归属。
 // 默认端点需与前端 credentialsBuilder.ts 的预设保持一致。
 var providerProfiles = map[string]*ProviderProfile{
+	PlatformDroid: {
+		Platform:         PlatformDroid,
+		DefaultMode:      AccountModeFactory,
+		Routing:          ProviderRoutingByModel,
+		DefaultTestModel: "claude-haiku-4-5-20251001",
+		CandidateModels:  DefaultDroidModelIDs(),
+		Modes: map[string]ProviderEndpoints{
+			AccountModeFactory: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: "https://api.factory.ai/api/llm/o/v1",
+					APIProtocolResponses:       "https://api.factory.ai/api/llm/o/v1",
+					APIProtocolAnthropic:       "https://api.factory.ai/api/llm/a",
+				},
+				ProtocolRules: []ProtocolRule{
+					{Pattern: "claude-*", Protocol: APIProtocolAnthropic},
+					{Pattern: "minimax-*", Protocol: APIProtocolAnthropic},
+					{Pattern: "gpt-*", Protocol: APIProtocolResponses},
+					{Pattern: "glm-*", Protocol: APIProtocolChatCompletions},
+					{Pattern: "kimi-*", Protocol: APIProtocolChatCompletions},
+				},
+			},
+		},
+	},
 	PlatformKimi: {
 		Platform:    PlatformKimi,
 		DefaultMode: AccountModePayG,

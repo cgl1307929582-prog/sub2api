@@ -1199,6 +1199,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	// Fallback to default models
+	if platform == service.PlatformDroid {
+		writeModelsList(c, platform, service.DefaultDroidModelIDs())
+		return
+	}
 	if platform == service.PlatformOpenAI {
 		writeModelsListResponse(c, openai.DefaultModels)
 		return
@@ -1500,6 +1504,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return xai.DefaultModelIDs()
 	case service.PlatformOpenCodeGo:
 		return service.DefaultOpenCodeGoModelIDs()
+	case service.PlatformDroid:
+		return service.DefaultDroidModelIDs()
 	case service.PlatformTypeSafe:
 		return []string{"jev-latest"}
 	case service.PlatformComposite:

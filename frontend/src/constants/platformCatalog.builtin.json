@@ -278,6 +278,60 @@
           }
         ]
       }
+    },
+    {
+      "id": "droid",
+      "display_name": "Droid / Factory",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "factory",
+        "routing": "by_model",
+        "candidate_models": [
+          "claude-sonnet-4-6",
+          "claude-opus-4-6",
+          "claude-haiku-4-5-20251001",
+          "gpt-5.4",
+          "gpt-5.4-mini",
+          "gpt-5.3-codex",
+          "glm-5.3-flash",
+          "glm-5",
+          "kimi-k2.5",
+          "minimax-m2.5"
+        ],
+        "modes": [
+          {
+            "mode": "factory",
+            "base_urls": {
+              "anthropic": "https://api.factory.ai/api/llm/a",
+              "chat_completions": "https://api.factory.ai/api/llm/o/v1",
+              "responses": "https://api.factory.ai/api/llm/o/v1"
+            },
+            "protocol_rules": [
+              {
+                "pattern": "claude-*",
+                "protocol": "anthropic"
+              },
+              {
+                "pattern": "minimax-*",
+                "protocol": "anthropic"
+              },
+              {
+                "pattern": "gpt-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "glm-*",
+                "protocol": "chat_completions"
+              },
+              {
+                "pattern": "kimi-*",
+                "protocol": "chat_completions"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "composite_precedence": [
@@ -293,6 +347,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline"
+    "cline",
+    "droid"
   ]
 }

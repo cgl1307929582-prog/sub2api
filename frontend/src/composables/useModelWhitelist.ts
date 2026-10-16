@@ -1,4 +1,4 @@
-import { getProviderProfile } from '@/constants/platformCatalog'
+import { getProviderProfile, listPlatforms } from '@/constants/platformCatalog'
 
 // =====================
 // 模型列表（硬编码，与 new-api 一致）
@@ -302,11 +302,12 @@ const allModelsList: string[] = [
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
-  ...perplexityModels
+  ...perplexityModels,
+  ...listPlatforms().flatMap(platform => platform.multi_protocol?.candidate_models ?? [])
 ]
 
 // 转换为下拉选项格式
-export const allModels = allModelsList.map(m => ({ value: m, label: m }))
+export const allModels = Array.from(new Set(allModelsList)).map(m => ({ value: m, label: m }))
 
 // =====================
 // 预设映射
@@ -495,6 +496,8 @@ export const commonErrorCodes = [
 
 // 按平台获取模型
 export function getModelsByPlatform(platform: string): string[] {
+  const candidates = getProviderProfile(platform)?.candidate_models
+  if (candidates?.length) return [...candidates]
   switch (platform) {
     case 'openai': return openaiModels
     case 'anthropic':
@@ -540,6 +543,8 @@ export function getModelsByPlatform(platform: string): string[] {
 
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
+  const candidates = getProviderProfile(platform)?.candidate_models
+  if (candidates?.length) return candidates.map(model => ({ label: model, from: model, to: model, color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900/30 dark:text-slate-300' }))
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings

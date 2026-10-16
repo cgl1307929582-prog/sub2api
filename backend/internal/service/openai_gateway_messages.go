@@ -350,7 +350,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		// 既有 body/session/conversation 行为。身份头在 post-build 阶段统一恢复。
 		setOpenAICompatMessagesBridgeContext(c, true)
 	}
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamCtx, releaseUpstreamCtx := detachAccountUpstreamContext(ctx, account, true)
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
 		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, grokCacheIdentity, s.cfg, s.settingService)
@@ -404,7 +404,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			if account.Platform != PlatformGrok {
 				break
 			}
-			upstreamCtxRetry, releaseRetry := detachUpstreamContext(ctx)
+			upstreamCtxRetry, releaseRetry := detachAccountUpstreamContext(ctx, account, true)
 			upstreamReq, err = buildGrokResponsesRequest(upstreamCtxRetry, c, account, responsesBody, token, grokCacheIdentity, s.cfg, s.settingService)
 			releaseRetry()
 			if err != nil {

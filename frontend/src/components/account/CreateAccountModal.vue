@@ -4196,7 +4196,7 @@ import {
   type OpenCodeAccountMode,
   type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
-import { listPlatforms } from '@/constants/platformCatalog'
+import { listPlatforms, supportsUpstreamModelSync } from '@/constants/platformCatalog'
 import {
   formatDateTimeLocalInput,
   getBrowserTimeZone,
@@ -4260,6 +4260,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
+  if (form.platform === 'droid') return t('admin.accounts.droid.apiKeyHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   // Grok 与多协议供应商没有对应的说明文案；通用文案指 Claude Console Key。
@@ -4289,6 +4290,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
 
 const apiKeyValuePlaceholder = computed(() => {
   switch (form.platform) {
+    case 'droid':
+      return 'Factory API Key'
     case 'openai':
       return 'sk-proj-...'
     case 'gemini':
@@ -5563,7 +5566,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       Object.values(modelMapping).some((target) =>
         typeof target === 'string' && target.trim() !== '' && !target.includes('*')
       )
-    if (upstreamModelsPreviewed.value || hasConcreteMappedTarget) {
+    if (supportsUpstreamModelSync(payload.platform) && (upstreamModelsPreviewed.value || hasConcreteMappedTarget)) {
       try {
         const result = await adminAPI.accounts.syncUpstreamModels(account.id)
         const warnings = result.warnings ?? []

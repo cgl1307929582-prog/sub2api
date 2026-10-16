@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2801,6 +2802,31 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if account.IsDroid() {
+		ids := service.DefaultDroidModelIDs()
+		if mapping := account.GetModelMapping(); len(mapping) > 0 {
+			candidates := ids
+			ids = make([]string, 0, len(mapping))
+			for _, id := range candidates {
+				if account.IsModelSupported(id) {
+					ids = append(ids, id)
+				}
+			}
+			for id := range mapping {
+				if !strings.Contains(id, "*") && !slices.Contains(ids, id) {
+					ids = append(ids, id)
+				}
+			}
+			sort.Strings(ids)
+		}
+		models := make([]openai.Model, 0, len(ids))
+		for _, id := range ids {
+			models = append(models, openai.Model{ID: id, Object: "model", Type: "model", OwnedBy: service.PlatformDroid, DisplayName: id})
+		}
+		response.Success(c, models)
 		return
 	}
 

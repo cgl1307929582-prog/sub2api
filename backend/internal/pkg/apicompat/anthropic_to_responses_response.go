@@ -18,6 +18,12 @@ import (
 
 const anthropicThinkingEnvelopePrefix = "anthropic-thinking-v1:"
 
+// AnthropicResponsesOptions controls signed thinking preservation across the
+// Anthropic/Responses bridge. Upstream providers still validate signatures.
+type AnthropicResponsesOptions struct {
+	PreserveThinkingSignatures bool
+}
+
 func encodeAnthropicThinking(block AnthropicContentBlock) string {
 	// Only fields belonging to the signed thinking block are retained.
 	payload, _ := json.Marshal(struct {
@@ -33,6 +39,13 @@ func encodeAnthropicThinking(block AnthropicContentBlock) string {
 // Responses API response. This is the reverse of ResponsesToAnthropic and
 // enables Anthropic upstream responses to be returned in OpenAI Responses format.
 func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
+	return AnthropicToResponsesResponseWithOptions(resp, nil)
+}
+
+// AnthropicToResponsesResponseWithOptions preserves signed thinking when a
+// provider requires it for subsequent tool continuations.
+func AnthropicToResponsesResponseWithOptions(resp *AnthropicResponse, opts *AnthropicResponsesOptions) *ResponsesResponse {
+	preserveThinking := claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model) || (opts != nil && opts.PreserveThinkingSignatures)
 	id := resp.ID
 	if id == "" {
 		id = generateResponsesID()
@@ -53,7 +66,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "thinking", "redacted_thinking":
-			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && (block.Signature != "" || block.Data != "") {
+			if preserveThinking && (block.Signature != "" || block.Data != "") {
 				item := ResponsesOutput{Type: "reasoning", ID: generateItemID(), EncryptedContent: encodeAnthropicThinking(block)}
 				if block.Thinking != "" {
 					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
@@ -72,7 +85,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				})
 			}
 		case "text":
-			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && block.Text != "" {
+			if preserveThinking && block.Text != "" {
 				outputs = append(outputs, ResponsesOutput{Type: "message", ID: generateItemID(), Role: "assistant", Status: "completed", Content: []ResponsesContentPart{{Type: "output_text", Text: block.Text}}})
 				continue
 			}

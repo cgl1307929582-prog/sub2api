@@ -14,10 +14,17 @@ import (
 // enables Anthropic platform groups to accept OpenAI Responses API requests
 // by converting them to the native /v1/messages format before forwarding upstream.
 func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, error) {
+	return ResponsesToAnthropicRequestWithOptions(req, nil)
+}
+
+// ResponsesToAnthropicRequestWithOptions restores only signed thinking envelopes
+// emitted by this bridge, rather than interpreting arbitrary encrypted content.
+func ResponsesToAnthropicRequestWithOptions(req *ResponsesRequest, opts *AnthropicResponsesOptions) (*AnthropicRequest, error) {
 	isOpus55 := claude.IsOpus55(req.Model)
 	isSonnet55 := claude.IsSonnet55(req.Model)
 	isHaiku55 := claude.IsHaiku55(req.Model)
-	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55)
+	preserveThinking := isOpus55 || isSonnet55 || isHaiku55 || (opts != nil && opts.PreserveThinkingSignatures)
+	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, preserveThinking)
 	if err != nil {
 		return nil, err
 	}

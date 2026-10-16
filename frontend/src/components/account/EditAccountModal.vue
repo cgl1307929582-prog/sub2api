@@ -236,7 +236,9 @@
             data-lpignore="true"
             data-bwignore="true"
             :placeholder="
-              account.platform === 'openai'
+              account.platform === 'droid'
+                ? 'Factory API Key'
+                : account.platform === 'openai'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
                   ? 'AQ.Ab...'
@@ -248,6 +250,7 @@
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
+          <p v-if="account.platform === 'droid'" class="input-hint">{{ t('admin.accounts.droid.apiKeyHint') }}</p>
         </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
@@ -4563,7 +4566,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         storedProtocol === 'anthropic' ||
         storedProtocol === 'responses'
           ? storedProtocol
-          : 'chat_completions'
+          : providerRoutesByModel(newAccount.platform) ? 'adaptive' : 'chat_completions'
       if (!cnSupportsNativeResponses(newAccount.platform, currentOpenCodeOrCNMode()) && editApiProtocol.value === 'responses') {
         editApiProtocol.value = 'chat_completions'
       }

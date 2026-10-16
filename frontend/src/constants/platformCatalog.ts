@@ -34,6 +34,8 @@ export interface ProviderProfileInfo {
   responses_path?: string
   /** 上游 /models 为每个模型给出 supported_endpoints，按模型分流时未命中规则的模型据此选协议。 */
   model_catalog?: boolean
+  /** Local compatibility candidates; actual access depends on the upstream account. */
+  candidate_models?: string[]
   /** 默认模式在前。 */
   modes: ProviderModeInfo[]
 }
@@ -89,6 +91,8 @@ export function isKnownPlatform(platform: string | null | undefined): boolean {
 export function supportsUpstreamModelSync(platform: string | null | undefined): boolean {
   const spec = getPlatformSpec(platform?.trim().toLowerCase())
   if (!spec) return false
+  // Factory's internal model discovery contract is not verified; use the local catalog.
+  if (spec.id === 'droid') return false
   return !!spec.multi_protocol || ['anthropic', 'openai', 'gemini', 'antigravity', 'grok'].includes(spec.id)
 }
 

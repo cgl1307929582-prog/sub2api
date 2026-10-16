@@ -68,12 +68,18 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateClaude55Request(body, upstreamModel); err != nil {
+		if account.IsDroid() {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, &droidRequestError{message: err.Error()}, false)
+		}
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
 	responsesReq.Model = upstreamModel
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	anthropicReq, err := convertDroidResponsesToAnthropic(account, &responsesReq)
 	if err != nil {
+		if account.IsDroid() {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, &droidRequestError{message: err.Error()}, false)
+		}
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
 	}
@@ -115,7 +121,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 		proxyURL = account.Proxy.URL()
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+	upstreamCtx, releaseUpstreamCtx := detachAccountUpstreamContext(ctx, account, reqStream)
 	upstreamReq, forwardedBody, err := s.buildNativeAnthropicUpstreamRequest(upstreamCtx, c, account, anthropicBody, apiKey, targetURL, body)
 	releaseUpstreamCtx()
 	if err != nil {
@@ -141,9 +147,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	}
 
 	if clientStream {
-		return s.handleResponsesStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping)
+		return s.handleResponsesStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping, account.IsDroid())
 	}
-	return s.handleResponsesBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping)
+	return s.handleResponsesBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping, account.IsDroid())
 }
 
 // handleResponsesBufferedFromNativeAnthropic reads Anthropic SSE events, assembles
@@ -157,6 +163,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 	reasoningEffort *string,
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
+	requireTerminal bool,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -169,6 +176,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	terminalSeen, upstreamFailed := false, false
 
 	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
 	streamInterval := s.anthropicNativeStreamInterval()
@@ -190,6 +198,9 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 			zap.Duration("interval", streamInterval),
 		)
 		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream data interval timeout")
+		if requireTerminal {
+			return &OpenAIForwardResult{Usage: claudeUsageToOpenAIUsage(&usage), Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel, UpstreamEndpoint: "/v1/messages"}, fmt.Errorf("stream data interval timeout")
+		}
 		return nil, fmt.Errorf("stream data interval timeout")
 	}
 
@@ -222,7 +233,18 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			if requireTerminal {
+				upstreamFailed = true
+				break
+			}
 			continue
+		}
+		if requireTerminal && event.Type == "error" {
+			upstreamFailed = true
+			break
+		}
+		if event.Type == "message_stop" {
+			terminalSeen = true
 		}
 
 		if event.Type == "message_start" && event.Message != nil {
@@ -255,6 +277,14 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 				}
 			}
 		}
+		if requireTerminal && terminalSeen {
+			break
+		}
+	}
+
+	if requireTerminal && (!terminalSeen || upstreamFailed) {
+		writeResponsesError(c, http.StatusBadGateway, "upstream_error", "Factory stream ended before successful completion")
+		return &OpenAIForwardResult{Usage: claudeUsageToOpenAIUsage(&usage), Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel, UpstreamEndpoint: "/v1/messages"}, errors.New("factory stream ended before successful completion")
 	}
 
 	if finalResp == nil {
@@ -274,7 +304,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 	if isClaude55SignedThinkingModel(upstreamModel) {
 		finalResp.Model = upstreamModel
 	}
-	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
+	responsesResp := apicompat.AnthropicToResponsesResponseWithOptions(finalResp, &apicompat.AnthropicResponsesOptions{PreserveThinkingSignatures: requireTerminal})
 	responsesResp.Model = originalModel
 
 	if s.responseHeaderFilter != nil {
@@ -318,6 +348,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	reasoningEffort *string,
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
+	requireTerminal bool,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -332,10 +363,11 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
-	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(upstreamModel)
+	state.PreserveThinkingSignatures = requireTerminal || isClaude55SignedThinkingModel(upstreamModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 
 	var usage ClaudeUsage
+	terminalSeen, upstreamFailed := false, false
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
@@ -385,6 +417,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			zap.String("request_id", requestID),
 			zap.Duration("interval", streamInterval),
 		)
+		if requireTerminal && !clientDisconnected {
+			writeDroidStreamError(c, true, "Factory stream data interval timeout", state)
+		}
 		return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 	}
 
@@ -467,10 +502,31 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			if requireTerminal {
+				upstreamFailed = true
+				break
+			}
 			continue
+		}
+		if requireTerminal && event.Type == "error" {
+			upstreamFailed = true
+			break
+		}
+		if event.Type == "message_stop" {
+			terminalSeen = true
 		}
 
 		processAnthropicEvent(&event)
+		if requireTerminal && terminalSeen {
+			break
+		}
+	}
+
+	if requireTerminal && (!terminalSeen || upstreamFailed) {
+		if !clientDisconnected {
+			writeDroidStreamError(c, true, "Factory stream ended before successful completion", state)
+		}
+		return resultWithUsage(), errors.New("factory stream ended before successful completion")
 	}
 
 	// Finalize state machine（客户端已断开时仍推进，保证 usage 汇总完整；仅在

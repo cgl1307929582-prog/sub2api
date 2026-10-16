@@ -70,6 +70,11 @@ func classifyUpstreamTransportError(err error) upstreamTransportErrorClass {
 		return upstreamTransportErrorClass{}
 	}
 
+	var sanitized *droidTransportError
+	if errors.As(err, &sanitized) {
+		return sanitized.class
+	}
+
 	// — Typed checks (preferred) ——————————————————————————————————————————————
 	if errors.Is(err, syscall.ECONNREFUSED) ||
 		errors.Is(err, syscall.EHOSTUNREACH) ||
@@ -115,6 +120,22 @@ func isClientCanceledTransportError(ctx context.Context, err error) bool {
 //
 // passthrough tags the Ops error event for the OpenAI passthrough forward path.
 func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, passthrough bool) error {
+	var localErr *droidRequestError
+	if errors.As(err, &localErr) {
+		if c != nil && c.Writer.Written() && strings.Contains(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+			if c.Request != nil && strings.Contains(c.Request.URL.Path, "/messages") {
+				_, _ = c.Writer.WriteString(buildAnthropicStreamErrorSSE("invalid_request_error", localErr.message))
+				c.Writer.Flush()
+			} else {
+				writeDroidStreamError(c, c.Request != nil && strings.Contains(c.Request.URL.Path, "/responses"), localErr.message, nil)
+			}
+		} else if c != nil && c.Request != nil && strings.Contains(c.Request.URL.Path, "/messages") {
+			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", localErr.message)
+		} else if c != nil {
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", localErr.message)
+		}
+		return err
+	}
 	if isClientCanceledTransportError(ctx, err) {
 		return err
 	}

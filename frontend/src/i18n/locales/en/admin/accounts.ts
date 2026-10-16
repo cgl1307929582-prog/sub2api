@@ -1,5 +1,6 @@
 export default {
     accounts: {
+    droid: { apiKeyHint: 'Enter a Factory API key. Claude / MiniMax use Messages; GPT uses Responses. The model catalog contains static candidates; availability depends on your Factory account.' },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
@@ -1647,6 +1648,20 @@ export default {
         todayCost: 'Today Cost',
         usageTrend: '30-Day Cost & Request Trend',
         noData: 'No usage data available for this account'
+      },
+      factoryQuota: {
+        used: 'used',
+        inactive: 'No active window',
+        unknown: 'Unknown',
+        extraBalance: 'Extra Usage balance (USD)',
+        stale: 'Refresh failed; showing the last result',
+        updated: 'Checked: {time}',
+        windowHint: '{percent}% remaining; resets at: {time}',
+        refresh: 'Refresh Factory quota',
+        unauthenticated: 'Factory quota authentication failed',
+        forbidden: 'This key cannot access Factory quota',
+        rateLimited: 'Factory quota queries are rate limited; retry later',
+        failed: 'Factory quota query failed; retry later'
       },
       usageWindow: {
         statsTitle: '5-Hour Window Usage Statistics',
