@@ -240,3 +240,59 @@ func TestDroidNewFamiliesIgnoreStaleSavedProtocolRules(t *testing.T) {
 		require.Equal(t, protocol, account.resolveModelRoutedProtocol(model))
 	}
 }
+
+func TestDroidChatStreamsFailOnEventOnlyErrors(t *testing.T) {
+	errorEvent := "event: error\ndata: {\"message\":\"generation failed\"}\n\n"
+	newGoogle := func(wire string) (*droidGoogleStream, io.ReadCloser) {
+		state := newDroidGoogleStream("gemini-3.8-flash")
+		return state, newDroidChatSSEReader(io.NopCloser(strings.NewReader(wire)), state.transform, func() error {
+			if !state.finished {
+				return errors.New("incomplete")
+			}
+			return nil
+		}, true)
+	}
+	for _, name := range []string{"error", "response.error", "response.failed"} {
+		wire := droidGoogleTextSSE + strings.Replace(errorEvent, "event: error", "event: "+name, 1)
+		_, reader := newGoogle(wire)
+		data, err := io.ReadAll(reader)
+		require.Error(t, err, name)
+		require.NotContains(t, string(data), "[DONE]")
+		require.Contains(t, string(data), `"error"`)
+
+		state, reader := newGoogle(wire)
+		_, err = bufferDroidGoogleChat(reader, state)
+		require.Error(t, err, "buffered Gemini responses must not succeed after %s", name)
+	}
+
+	chunk := `data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"OK"}}]}` + "\n\n"
+	reader := newDroidChatSSEReader(io.NopCloser(strings.NewReader(chunk+errorEvent+"data: [DONE]\n\n")), normalizeDroidChatJSON, nil, false)
+	data, err := io.ReadAll(reader)
+	require.Error(t, err)
+	require.NotContains(t, string(data), "[DONE]")
+
+	// An event name without data is never dispatched and must not leak into
+	// the next event.
+	state, reader := newGoogle("event: error\n\n" + droidGoogleTextSSE)
+	data, err = bufferDroidGoogleChat(reader, state)
+	require.NoError(t, err)
+	require.Equal(t, "OK", gjson.GetBytes(data, "choices.0.message.content").String())
+	reader = newDroidChatSSEReader(io.NopCloser(strings.NewReader("event: error\n\n"+chunk+"data: [DONE]\n\n")), normalizeDroidChatJSON, nil, false)
+	data, err = io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "data: [DONE]")
+}
+
+func TestDroidChatStreamFailsOnErrorEventWithEmptyData(t *testing.T) {
+	chunk := `data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"OK"}}]}` + "\n\n"
+	reader := newDroidChatSSEReader(io.NopCloser(strings.NewReader(chunk+"event: error\ndata:\n\ndata: [DONE]\n\n")), normalizeDroidChatJSON, nil, false)
+	data, err := io.ReadAll(reader)
+	require.Error(t, err)
+	require.NotContains(t, string(data), "[DONE]")
+
+	// An empty data event without an error name is still ignored.
+	reader = newDroidChatSSEReader(io.NopCloser(strings.NewReader(chunk+"data:\n\ndata: [DONE]\n\n")), normalizeDroidChatJSON, nil, false)
+	data, err = io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "data: [DONE]")
+}
