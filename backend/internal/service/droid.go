@@ -29,7 +29,10 @@ const (
 // Compatibility candidates from the public Factory adapter reference, not a live catalog.
 func DefaultDroidModelIDs() []string {
 	return []string{"claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001",
-		"gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "glm-5.3-flash", "glm-5", "kimi-k2.5", "minimax-m2.5"}
+		"gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "glm-5.3-flash", "glm-5", "kimi-k2.5", "minimax-m2.5",
+		"gemini-3-flash-preview", "gemini-3.1-pro-preview", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash",
+		"grok-4.5", "grok-4.6", "grok-4.7", "deepseek-v4-flash-0731", "deepseek-v4-pro", "deepseek-v4.1-flash",
+		"mistral-large-4", "mistral-medium-3.5", "qwen3.8-max", "nemotron-3-ultra", "inkling"}
 }
 
 func (a *Account) IsDroid() bool { return a != nil && a.Platform == PlatformDroid }
@@ -63,7 +66,16 @@ func droidModelRoute(model string) (protocol, provider, path string) {
 		return APIProtocolAnthropic, "fireworks", "/api/llm/a/v1/messages"
 	case strings.HasPrefix(model, "gpt-"):
 		return APIProtocolResponses, "openai", "/api/llm/o/v1/responses"
-	case strings.HasPrefix(model, "glm-"), strings.HasPrefix(model, "kimi-"):
+	case strings.HasPrefix(model, "grok-"):
+		return APIProtocolResponses, "xai", "/api/llm/o/v1/responses"
+	case strings.HasPrefix(model, "gemini-"):
+		// The transport converts the shared Chat envelope to Google on the wire.
+		return APIProtocolChatCompletions, "google", "/api/llm/o/v1/chat/completions"
+	case strings.HasPrefix(model, "mistral-"):
+		return APIProtocolChatCompletions, "mistral", "/api/llm/o/v1/chat/completions"
+	case strings.HasPrefix(model, "glm-"), strings.HasPrefix(model, "kimi-"),
+		strings.HasPrefix(model, "deepseek-"), strings.HasPrefix(model, "qwen"),
+		strings.HasPrefix(model, "nemotron-"), model == "inkling":
 		return APIProtocolChatCompletions, "fireworks", "/api/llm/o/v1/chat/completions"
 	default:
 		return "", "", ""
@@ -94,7 +106,7 @@ func prepareDroidRequest(request *http.Request, account *Account) (*http.Request
 	}
 	protocol, provider, path := droidModelRoute(envelope.Model)
 	if path == "" {
-		return nil, errors.New("factory model family is unsupported; configure a Claude, GPT, GLM, Kimi or MiniMax model mapping")
+		return nil, errors.New("factory model family is unsupported; sync the supported Factory model catalog")
 	}
 	if request.Method != http.MethodPost || request.URL.Path != path || request.URL.RawQuery != "" || request.URL.Fragment != "" || request.URL.User != nil {
 		return nil, errors.New("factory endpoint does not match the selected model protocol")
@@ -103,7 +115,22 @@ func prepareDroidRequest(request *http.Request, account *Account) (*http.Request
 	if err != nil {
 		return nil, err
 	}
+	if provider == "mistral" {
+		payload, err = prepareDroidMistralBody(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if provider == "google" {
+		payload, err = droidChatToGoogle(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
 	out := request.Clone(WithHTTPUpstreamRedirectsDisabled(request.Context()))
+	if provider == "google" {
+		out.URL.Path = droidGooglePath
+	}
 	out.Body = io.NopCloser(bytes.NewReader(payload))
 	out.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(payload)), nil }
 	out.ContentLength = int64(len(payload))
@@ -292,6 +319,12 @@ func droidRoundTrip(request *http.Request, account *Account, send func(*http.Req
 		response.Body = newDroidErrorSSEReader(response.Body, key)
 	}
 	response.Body = &droidSecretReader{source: &droidJSONEscapeReader{source: response.Body}, secret: []byte(key)}
+	if response.StatusCode == http.StatusOK {
+		response, err = adaptDroidChatResponse(request, prepared, response)
+		if err != nil {
+			return nil, safeDroidError(err)
+		}
+	}
 	return response, nil
 }
 

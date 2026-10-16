@@ -52,7 +52,7 @@ func TestDroidRoundTripSanitizesNestedErrorsBeforeSharedExtraction(t *testing.T)
 }
 
 func TestDroidGatewayProtocolMatrix(t *testing.T) {
-	for _, model := range []string{"claude-sonnet-4-6", "gpt-5.4", "glm-5", "kimi-k2.5", "minimax-m2.5"} {
+	for _, model := range DefaultDroidModelIDs() {
 		for _, ingress := range routingMatrixIngresses() {
 			t.Run(model+"/"+ingress.name, func(t *testing.T) {
 				upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
@@ -62,13 +62,18 @@ func TestDroidGatewayProtocolMatrix(t *testing.T) {
 				require.Len(t, upstream.requests, 1)
 				request := upstream.requests[0]
 				protocol, provider, path := droidModelRoute(model)
+				if provider == "google" {
+					path = droidGooglePath
+				}
 				require.Equal(t, "https://api.factory.ai"+path, request.URL.String())
 				require.Equal(t, "Bearer factory_test_secret", request.Header.Get("Authorization"))
 				require.Equal(t, provider, request.Header.Get("X-API-Provider"))
 				require.Equal(t, "cli", request.Header.Get("X-Factory-Client"))
 				require.Equal(t, model, gjson.GetBytes(upstream.lastBody, "model").String())
 				require.True(t, HTTPUpstreamRedirectsDisabled(request.Context()))
-				if protocol == APIProtocolResponses {
+				if provider == "google" {
+					require.True(t, gjson.GetBytes(upstream.lastBody, "contents").Exists())
+				} else if protocol == APIProtocolResponses {
 					require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 				} else {
 					require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
@@ -193,7 +198,7 @@ func TestDroidPreparationIsolatesIdentityAndRejectsInvalidRoutes(t *testing.T) {
 		_, err = prepareDroidRequest(bad, account)
 		require.Error(t, err)
 	}
-	unknown, _ := http.NewRequest(http.MethodPost, "https://api.factory.ai/api/llm/o/v1/chat/completions", strings.NewReader(`{"model":"gemini-3-flash-preview"}`))
+	unknown, _ := http.NewRequest(http.MethodPost, "https://api.factory.ai/api/llm/o/v1/chat/completions", strings.NewReader(`{"model":"unknown-family"}`))
 	_, err = prepareDroidRequest(unknown, account)
 	require.Error(t, err)
 }
@@ -312,7 +317,7 @@ func TestDroidLocalRejectionDoesNotFailOver(t *testing.T) {
 		t.Run(ingress.name, func(t *testing.T) {
 			upstream := &httpUpstreamRecorder{err: errors.New("must not send")}
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
-			body := routingMatrixCase{ingress: ingress, model: "gemini-3-pro"}.body()
+			body := routingMatrixCase{ingress: ingress, model: "unknown-family"}.body()
 			c := adaptiveProtocolTestContext(ingress.path, body)
 			err := ingress.forward(svc, c, droidTestAccount(), body)
 			require.Error(t, err)

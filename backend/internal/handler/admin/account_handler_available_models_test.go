@@ -86,7 +86,7 @@ func TestDroidCatalogAdminSyncAndPreview(t *testing.T) {
 	}}
 	for _, route := range []string{"/api/v1/admin/accounts/2/models/sync-upstream", "/api/v1/admin/accounts/models/sync-upstream-preview"} {
 		upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{StatusCode: http.StatusOK,
-			Body: io.NopCloser(strings.NewReader("| Model | Model ID |\n| --- | --- |\n| Claude Future | `claude-future-test` |\n| Gemini Future | `gemini-future-test` |\n"))}}
+			Body: io.NopCloser(strings.NewReader("| Model | Model ID |\n| --- | --- |\n| Claude Future | `claude-future-test` |\n| Gemini Future | `gemini-future-test` |\n| Image Future | `image-future-test` |\n"))}}
 		router := setupSyncUpstreamModelsRouter(svc, upstream)
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, route, strings.NewReader(`{"platform":"droid","type":"apikey","api_key":"factory_test_secret"}`))
@@ -97,10 +97,10 @@ func TestDroidCatalogAdminSyncAndPreview(t *testing.T) {
 			Data service.UpstreamModelCatalog `json:"data"`
 		}
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-		require.Equal(t, []string{"claude-future-test"}, resp.Data.Models)
+		require.Equal(t, []string{"claude-future-test", "gemini-future-test"}, resp.Data.Models)
 		require.Equal(t, service.DroidModelCatalogURL, resp.Data.Source)
 		require.NotEmpty(t, resp.Data.SyncedAt)
-		require.Equal(t, []string{"gemini-future-test"}, resp.Data.UnsupportedModels)
+		require.Equal(t, []string{"image-future-test"}, resp.Data.UnsupportedModels)
 		require.NotContains(t, rec.Body.String(), "factory_test_secret")
 	}
 }
