@@ -22,5 +22,6 @@ func TestAllPlatformsIncludesEveryConcretePlatform(t *testing.T) {
 		"command_code",
 		"cline",
 		"droid",
+		"colab",
 	}, AllPlatforms())
 }
