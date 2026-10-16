@@ -95,6 +95,7 @@ export default {
   "requests": "调用次数",
   "input": "输入 tokens",
   "output": "输出 tokens",
+  "requestDuration": "总耗时",
   "duration": "平均总耗时",
   "cost": "用户计费（USD）",
   "recentCalls": "最近 Sub2API 调用",

@@ -44,7 +44,7 @@
           <h2 class="font-semibold">{{ t('colabPool.usageTitle') }}</h2><p class="text-sm text-gray-500">{{ t('colabPool.usageHint') }}</p><p v-if="usageError" role="alert" class="text-sm text-amber-600">{{ t('colabPool.usageUnavailable') }}</p>
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><div v-for="metric in usageMetrics" :key="metric.label" class="pool-card"><p class="metric-label">{{ metric.label }}</p><p class="mt-3 text-2xl font-semibold tabular-nums">{{ metric.value }}</p></div></div>
           <p v-if="!snapshot?.telemetry_available" class="text-sm text-amber-600">{{ t('colabPool.telemetryUnavailable') }}</p><div class="grid gap-5 xl:grid-cols-2"><ColabInstanceCard v-for="instance in activeInstances" :key="instance.id" v-bind="instanceProps(instance)" @stop="confirmStop" /></div>
-          <div class="pool-card overflow-x-auto"><h3 class="mb-4 font-semibold">{{ t('colabPool.recentCalls') }}</h3><table class="w-full whitespace-nowrap text-left text-sm"><thead class="text-xs text-gray-500"><tr><th>{{ t('colabPool.time') }}</th><th>{{ t('colabPool.model') }}</th><th>{{ t('colabPool.protocol') }}</th><th>{{ t('colabPool.input') }}</th><th>{{ t('colabPool.output') }}</th><th>{{ t('colabPool.duration') }}</th></tr></thead><tbody><tr v-for="log in usage?.recent || []" :key="log.id"><td>{{ new Date(log.created_at).toLocaleString() }}</td><td>{{ log.model }}</td><td>{{ log.inbound_endpoint || '—' }} {{ log.stream ? `· ${t('colabPool.stream')}` : '' }}</td><td>{{ num(log.input_tokens, 0) }}</td><td>{{ num(log.output_tokens, 0) }}</td><td>{{ log.duration_ms == null ? '—' : num(log.duration_ms / 1000, 2) + ' s' }}</td></tr></tbody></table><p v-if="!usage?.recent.length" class="py-5 text-sm text-gray-500">{{ t('colabPool.noRecords') }}</p></div>
+          <div class="pool-card overflow-x-auto"><h3 class="mb-4 font-semibold">{{ t('colabPool.recentCalls') }}</h3><table class="w-full whitespace-nowrap text-left text-sm"><thead class="text-xs text-gray-500"><tr><th>{{ t('colabPool.time') }}</th><th>{{ t('colabPool.model') }}</th><th>{{ t('colabPool.protocol') }}</th><th>{{ t('colabPool.input') }}</th><th>{{ t('colabPool.output') }}</th><th>{{ t('colabPool.requestDuration') }}</th></tr></thead><tbody><tr v-for="log in usage?.recent || []" :key="log.id"><td>{{ new Date(log.created_at).toLocaleString() }}</td><td>{{ log.model }}</td><td>{{ log.inbound_endpoint || '—' }} {{ log.stream ? `· ${t('colabPool.stream')}` : '' }}</td><td>{{ num(log.input_tokens, 0) }}</td><td>{{ num(log.output_tokens, 0) }}</td><td>{{ log.duration_ms == null ? '—' : num(log.duration_ms / 1000, 2) + ' s' }}</td></tr></tbody></table><p v-if="!usage?.recent.length" class="py-5 text-sm text-gray-500">{{ t('colabPool.noRecords') }}</p></div>
         </div>
         <div v-else-if="tab === 'events'" class="space-y-4"><label class="flex items-center gap-2 text-sm"><input v-model="errorsOnly" type="checkbox">{{ t('colabPool.errorsOnly') }}</label><div class="pool-card"><div v-for="event in filteredEvents" :key="event.id" class="flex flex-wrap items-start justify-between gap-2 border-b border-gray-100 py-4 last:border-0 dark:border-dark-700"><p class="min-w-0 flex-1 break-words text-sm" :class="event.level === 'error' ? 'text-red-600' : ''">{{ event.msg }}</p><time class="text-xs text-gray-400">{{ date(event.ts) }}</time></div><p v-if="!filteredEvents.length" class="text-sm text-gray-500">{{ t('colabPool.noRecords') }}</p></div></div>
         <form v-else-if="tab === 'settings' && settingsDraft" class="pool-card max-w-4xl space-y-6" @submit.prevent="saveSettings">
@@ -120,7 +120,12 @@ const numericSettings: { key: Exclude<keyof PoolSettings, typeof toggleSettings[
 async function load() {
   if (loading.value) return
   loading.value = true
-  try { snapshot.value = await api.snapshot(); error.value = ''; if (!settingsDirty.value) settingsDraft.value = { ...snapshot.value.state.settings } }
+  try {
+    const next = await api.snapshot()
+    if (!next.telemetry_available && snapshot.value?.telemetry) next.telemetry = snapshot.value.telemetry
+    snapshot.value = next; error.value = ''
+    if (!settingsDirty.value) settingsDraft.value = { ...next.state.settings }
+  }
   catch (e) { error.value = message(e) }
   finally { loading.value = false }
 }
