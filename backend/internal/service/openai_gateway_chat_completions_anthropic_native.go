@@ -156,9 +156,9 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, upstreamModel)
 
 	if clientStream {
-		return s.handleCCStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, account.IsDroid())
+		return s.handleCCStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, account.IsDroid(), account)
 	}
-	return s.handleCCBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, account.IsDroid())
+	return s.handleCCBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, account.IsDroid(), account)
 }
 
 // handleCCBufferedFromNativeAnthropic reads Anthropic SSE events, assembles the
@@ -172,6 +172,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 	reasoningEffort *string,
 	startTime time.Time,
 	requireTerminal bool,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -185,6 +186,18 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 	terminalSeen, upstreamFailed := false, false
+	// Classify actual read failures before fallback output or usage is returned.
+	// requireTerminal alone must never imply a Droid account.
+	retryRead := func(err error) *UpstreamFailoverError {
+		if terminalSeen || len(accounts) == 0 {
+			return nil
+		}
+		if errors.Is(err, errAnthropicNativeStreamIdle) {
+			// The pump sentinel represents an independent upstream read timeout.
+			err = context.DeadlineExceeded
+		}
+		return droidBodyReadFailover(context.Background(), c, accounts[0], resp, err)
+	}
 
 	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
 	streamInterval := s.anthropicNativeStreamInterval()
@@ -215,6 +228,9 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 	for {
 		line, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
@@ -229,6 +245,9 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 
 		dataLine, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
@@ -348,6 +367,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	reasoningEffort *string,
 	startTime time.Time,
 	requireTerminal bool,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -367,6 +387,16 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 
 	var usage ClaudeUsage
 	terminalSeen, upstreamFailed := false, false
+	// A successful terminal event must never be replayed.
+	retryRead := func(err error) *UpstreamFailoverError {
+		if terminalSeen || len(accounts) == 0 {
+			return nil
+		}
+		if errors.Is(err, errAnthropicNativeStreamIdle) {
+			err = context.DeadlineExceeded
+		}
+		return droidBodyReadFailover(context.Background(), c, accounts[0], resp, err)
+	}
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
@@ -484,6 +514,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	for {
 		line, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
@@ -496,6 +529,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 
 		dataLine, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}

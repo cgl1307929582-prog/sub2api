@@ -75,10 +75,14 @@ def public_status(state, config, now):
     checked = [number(a.get('checked_at')) for a in usable]
     oldest = min(checked) if checked and all(checked) else None
     # "usable" in the dashboard includes accounts below the startup threshold.
+    # Mirror the admin start check: gpus must be a list containing the exact
+    # configured GPU (no substring matching on strings, missing/null/empty fail).
+    gpu = settings.get('gpu')
     eligible = [a for a in usable if number(a.get('balance')) is not None
                 and a['balance'] >= settings['min_start_cu']
                 and not a.get('cooldown') and not a.get('instance')
-                and not a.get('assignments')]
+                and not a.get('assignments')
+                and isinstance(a.get('gpus'), list) and gpu in a['gpus']]
     public_instances = []
     known_states = {'starting', 'ready', 'draining', 'stopping', 'stopped', 'error', 'failed'}
     for instance in instances[:30]:
@@ -158,7 +162,7 @@ def chat(body: dict = Body(...)):
 
     def content():
         try:
-            yield from response.iter_content(chunk_size=4096)
+            yield from upstream_chunks(response)
         finally:
             response.close()
 
@@ -166,6 +170,31 @@ def chat(body: dict = Body(...)):
                              media_type=response.headers.get('Content-Type', 'application/json'),
                              headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'},
                              background=BackgroundTask(response.close))
+
+
+def upstream_chunks(response):
+    """Yield upstream bytes as soon as they arrive, never waiting to fill a
+    fixed-size buffer: small SSE events must not stall until more data or EOF.
+
+    read1 returns whatever is available for chunked, length-delimited and
+    close-delimited bodies (urllib3 2.x). iter_content(chunk_size=None) is the
+    fallback; it is immediate for chunked bodies, which SSE servers use.
+
+    Requests opens the raw stream with decode_content=False, so read1 must
+    decode explicitly: Accept-Encoding: identity is only a preference, and the
+    downstream response never carries Content-Encoding. urllib3's read1 keeps
+    reading until the decoder yields bytes (empty only at EOF), so a
+    sync-flushed compressed event is still forwarded without waiting for EOF.
+    """
+    read1 = getattr(response.raw, 'read1', None)
+    if read1 is None:
+        yield from response.iter_content(chunk_size=None)
+        return
+    while True:
+        data = read1(65536, decode_content=True)
+        if not data:
+            return
+        yield data
 
 
 def unavailable():

@@ -246,6 +246,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
+		if failure := droidBodyReadFailover(ctx, c, account, resp, err); failure != nil {
+			return nil, failure
+		}
 		return nil, err
 	}
 	observer := upstreamResponseModelObserverFromContext(c)
@@ -425,6 +428,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if !sawTerminalEvent {
+					if failure := droidBodyReadFailover(ctx, c, account, resp, io.ErrUnexpectedEOF); failure != nil {
+						return nil, failure
+					}
+				}
 				if !clientDisconnected {
 					flusher.Flush()
 				}
@@ -437,6 +445,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			if ev.err != nil {
 				if sawTerminalEvent {
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
+				}
+				if failure := droidBodyReadFailover(ctx, c, account, resp, ev.err); failure != nil {
+					return nil, failure
 				}
 				if clientDisconnected {
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
@@ -500,6 +511,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			if clientDisconnected {
 				return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
 					fmt.Errorf("stream usage incomplete after timeout")
+			}
+			if failure := droidBodyReadFailover(ctx, c, account, resp, context.DeadlineExceeded); failure != nil {
+				return nil, failure
 			}
 			logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, upstreamModel, streamInterval)
 			if s.rateLimitService != nil {

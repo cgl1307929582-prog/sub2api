@@ -265,13 +265,19 @@ type droidRequestError struct{ message string }
 func (e *droidRequestError) Error() string { return e.message }
 
 // Preserve only the classification, never the potentially sensitive original error.
-type droidTransportError struct{ class upstreamTransportErrorClass }
+type droidTransportError struct {
+	class             upstreamTransportErrorClass
+	bodyReadRetryable bool
+}
 
 func (e *droidTransportError) Error() string { return "Factory upstream request failed" }
 
 func droidRoundTrip(request *http.Request, account *Account, send func(*http.Request) (*http.Response, error)) (*http.Response, error) {
 	if !account.IsDroid() {
 		return send(request)
+	}
+	if err := request.Context().Err(); err != nil {
+		return nil, err
 	}
 	prepared, err := prepareDroidRequest(request, account)
 	if err != nil {
@@ -281,6 +287,10 @@ func droidRoundTrip(request *http.Request, account *Account, send func(*http.Req
 			message = validation.Message
 		}
 		return nil, &droidRequestError{message: message}
+	}
+	if err := prepared.Context().Err(); err != nil {
+		_ = prepared.Body.Close()
+		return nil, err
 	}
 	response, err := send(prepared)
 	if err != nil {
@@ -340,7 +350,7 @@ func safeDroidError(err error) error {
 	case errors.Is(err, context.DeadlineExceeded):
 		return context.DeadlineExceeded
 	default:
-		return &droidTransportError{class: classifyUpstreamTransportError(err)}
+		return &droidTransportError{class: classifyUpstreamTransportError(err), bodyReadRetryable: isDroidRecoverableBodyReadError(err)}
 	}
 }
 

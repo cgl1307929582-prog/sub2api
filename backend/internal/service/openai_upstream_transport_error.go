@@ -136,6 +136,9 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		}
 		return err
 	}
+	if account != nil && account.IsDroid() && ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if isClientCanceledTransportError(ctx, err) {
 		return err
 	}
@@ -175,10 +178,16 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
 	}
 
-	return &UpstreamFailoverError{
+	failure := &UpstreamFailoverError{
 		StatusCode:   http.StatusBadGateway,
 		ResponseBody: openAITransportFailoverBody,
 	}
+	if account != nil && account.IsDroid() && !classifyUpstreamTransportError(err).Persistent {
+		failure.RetryableOnSameAccount = true
+		failure.SameAccountRetryMax = 2
+		failure.SameAccountRetryDelay = 300 * time.Millisecond
+	}
+	return failure
 }
 
 // tempUnscheduleOpenAITransportError marks an account temporarily unschedulable

@@ -508,13 +508,26 @@ func TestDroidCrossProtocolTruncationAndErrorNeverCompletes(t *testing.T) {
 					}
 					require.Error(t, err)
 					var failover *UpstreamFailoverError
-					require.NotErrorAs(t, err, &failover)
-					require.NotNil(t, result)
-					require.Equal(t, 10, result.Usage.InputTokens)
+					// The handler retries uncommitted buffered truncation on the same account;
+					// explicit protocol errors and committed streams are not retried.
+					if !stream && !explicitError {
+						require.ErrorAs(t, err, &failover)
+						require.Equal(t, 502, failover.StatusCode)
+						require.True(t, failover.RetryableOnSameAccount)
+						require.Equal(t, 2, failover.SameAccountRetryMax)
+						require.Equal(t, 300*time.Millisecond, failover.SameAccountRetryDelay)
+						require.Nil(t, result)
+						require.False(t, c.Writer.Written())
+						require.Equal(t, 0, rec.Body.Len())
+					} else {
+						require.NotErrorAs(t, err, &failover)
+						require.NotNil(t, result)
+						require.Equal(t, 10, result.Usage.InputTokens)
+						require.Contains(t, rec.Body.String(), "error")
+					}
 					require.NotContains(t, rec.Body.String(), "response.completed")
 					require.NotContains(t, rec.Body.String(), "[DONE]")
 					require.NotContains(t, rec.Body.String(), "factory_test_secret")
-					require.Contains(t, rec.Body.String(), "error")
 					require.Len(t, upstream.requests, 1)
 					if responses && stream {
 						require.Contains(t, rec.Body.String(), "event: response.failed\n")
@@ -540,7 +553,7 @@ func TestDroidCrossProtocolTruncationAndErrorNeverCompletes(t *testing.T) {
 						require.NotEmpty(t, createdID)
 						require.Equal(t, createdID, failedID)
 					}
-					if !stream {
+					if !stream && explicitError {
 						require.Equal(t, 502, rec.Code)
 					}
 				})
@@ -601,24 +614,39 @@ func TestDroidCrossProtocolIdleTimeoutPreservesUsageAndFails(t *testing.T) {
 				c, rec := newTestContext()
 				var result *OpenAIForwardResult
 				var err error
+				start := time.Now()
 				if responses {
 					result, err = svc.Forward(context.Background(), c, droidTestAccount(), []byte(fmt.Sprintf(`{"model":"claude-sonnet-4-6","stream":%v,"input":"hi"}`, stream)))
 				} else {
 					result, err = svc.ForwardAsChatCompletions(context.Background(), c, droidTestAccount(), []byte(fmt.Sprintf(`{"model":"claude-sonnet-4-6","stream":%v,"messages":[{"role":"user","content":"hi"}]}`, stream)), "", "")
 				}
-				require.ErrorContains(t, err, "timeout")
+				elapsed := time.Since(start)
 				var failover *UpstreamFailoverError
-				require.NotErrorAs(t, err, &failover)
-				require.NotNil(t, result)
-				require.Equal(t, 10, result.Usage.InputTokens)
+				if !stream {
+					// An uncommitted buffered idle timeout now asks the handler to retry the same account.
+					require.GreaterOrEqual(t, elapsed, 900*time.Millisecond)
+					require.Less(t, elapsed, 5*time.Second)
+					require.Error(t, err)
+					require.ErrorAs(t, err, &failover)
+					require.Equal(t, 502, failover.StatusCode)
+					require.True(t, failover.RetryableOnSameAccount)
+					require.Equal(t, 2, failover.SameAccountRetryMax)
+					require.Equal(t, 300*time.Millisecond, failover.SameAccountRetryDelay)
+					require.Nil(t, result)
+					require.False(t, c.Writer.Written())
+					require.Equal(t, 0, rec.Body.Len())
+				} else {
+					require.ErrorContains(t, err, "timeout")
+					require.NotErrorAs(t, err, &failover)
+					require.NotNil(t, result)
+					require.Equal(t, 10, result.Usage.InputTokens)
+					require.Contains(t, rec.Body.String(), "error")
+				}
 				require.Len(t, upstream.requests, 1)
-				require.Contains(t, rec.Body.String(), "error")
 				require.NotContains(t, rec.Body.String(), "response.completed")
 				require.NotContains(t, rec.Body.String(), "[DONE]")
 				if stream && responses {
 					require.Contains(t, rec.Body.String(), "event: response.failed\n")
-				} else if !stream {
-					require.Equal(t, 502, rec.Code)
 				}
 			})
 		}

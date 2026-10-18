@@ -140,7 +140,7 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	if account.Platform != PlatformGrok && !tempUnscheduled {
 		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
-	return s.newOpenAIAccountFailoverError(
+	failure := s.newOpenAIAccountFailoverError(
 		account,
 		resp.StatusCode,
 		resp.Header,
@@ -149,6 +149,10 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		shouldDisable,
 		!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 	)
+	if account.IsDroid() && ctx.Err() != nil {
+		failure.RetryableOnSameAccount = false
+	}
+	return failure
 }
 
 // openAIChatCompletionsTargetURL 解析账号的（非 Grok）Chat Completions 上游端点。
