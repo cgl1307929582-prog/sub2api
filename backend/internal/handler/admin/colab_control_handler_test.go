@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -82,6 +84,89 @@ func TestColabControlTelemetryFailurePreservesState(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"telemetry_available":false`)
 	require.Contains(t, w.Body.String(), `"ready":0`)
 }
+func TestColabControlTelemetryTimeoutPreservesState(t *testing.T) {
+	for _, flushBody := range []bool{false, true} {
+		name := "waiting for headers"
+		if flushBody {
+			name = "waiting for body"
+		}
+		t.Run(name, func(t *testing.T) {
+			release := make(chan struct{})
+			canceled := make(chan struct{})
+			h, router := colabControlFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/control/state" {
+					fmt.Fprint(w, `{"summary":{"ready":1},"accounts":[{"id":7,"credentials":{"refresh_token":"hidden"},"error":"private-worker-secret-123456789"}]}`)
+					return
+				}
+				if flushBody {
+					// Force Do to return headers while ReadAll remains blocked.
+					fmt.Fprint(w, `{"resources":`)
+					w.(http.Flusher).Flush()
+				}
+				select {
+				case <-r.Context().Done():
+					close(canceled)
+				case <-release:
+				}
+			})
+			h.telemetryTimeout = 40 * time.Millisecond
+			require.Equal(t, 90*time.Second, h.client.Timeout)
+			ctx, cancel := context.WithCancel(context.Background())
+			req := httptest.NewRequest("GET", "/snapshot", nil).WithContext(ctx)
+			result := make(chan *httptest.ResponseRecorder, 1)
+			done := make(chan struct{})
+			// Registered after the fixture: unblock both sides before Server.Close,
+			// even if the timeout regresses and a time-bound assertion fails.
+			t.Cleanup(func() {
+				close(release)
+				cancel()
+				select {
+				case <-done:
+				case <-time.After(2 * time.Second):
+					t.Error("snapshot goroutine did not exit after cleanup cancellation")
+				}
+			})
+			started := time.Now()
+			go func() {
+				defer close(done)
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				result <- w
+			}()
+			var w *httptest.ResponseRecorder
+			select {
+			case w = <-result:
+			case <-time.After(time.Second):
+				t.Fatal("snapshot did not return within one second")
+			}
+			require.Less(t, time.Since(started), time.Second)
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+			var envelope struct {
+				Code int `json:"code"`
+				Data struct {
+					State              json.RawMessage `json:"state"`
+					Telemetry          json.RawMessage `json:"telemetry"`
+					TelemetryAvailable bool            `json:"telemetry_available"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+			require.Zero(t, envelope.Code)
+			require.JSONEq(t, `{"summary":{"ready":1},"accounts":[{"id":7,"error":"[REDACTED]"}]}`, string(envelope.Data.State))
+			require.Equal(t, "null", string(envelope.Data.Telemetry))
+			require.False(t, envelope.Data.TelemetryAvailable)
+			require.NotContains(t, w.Body.String(), "hidden")
+			require.NotContains(t, w.Body.String(), "private-worker-secret")
+			select {
+			case <-canceled:
+			case <-time.After(time.Second):
+				t.Fatal("telemetry upstream did not observe request cancellation")
+			}
+		})
+	}
+}
+
 func TestColabControlRejectsRedirects(t *testing.T) {
 	var leaked atomic.Bool
 	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { leaked.Store(true) }))

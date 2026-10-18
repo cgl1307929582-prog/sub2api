@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -373,6 +374,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		lastDownstreamWriteAt = time.Now()
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
+		if !sawTerminalEvent {
+			if failure := droidBodyReadFailover(ctx, c, account, resp, io.ErrUnexpectedEOF); failure != nil {
+				return nil, failure
+			}
+		}
 		if stageFirstOutput && eventInProgress {
 			// EOF dispatches the final SSE event even without a trailing blank line.
 			completeGuardedEvent(true)
@@ -444,6 +450,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 			result, err := finalizeStream()
 			return result, err, true
+		}
+		if failure := droidBodyReadFailover(ctx, c, account, resp, scanErr); failure != nil {
+			return nil, failure, true
 		}
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
@@ -780,7 +789,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				eventShouldFlush = false
 				return
 			}
-			shouldFlush = eventShouldFlush || (queueDrained && clientOutputStarted)
+			// Droid prioritizes the first complete upstream event, including
+			// response.created metadata. Do not wait for semantic output or a
+			// drained queue; flushing here commits the handler's replay barrier.
+			// Keep the shared semantic-output and TTFT classifiers unchanged.
+			shouldFlush = (account != nil && account.IsDroid()) || eventShouldFlush || (queueDrained && clientOutputStarted)
 			eventShouldFlush = false
 			if failureDelivered {
 				terminalFailurePending = false
@@ -927,6 +940,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 			if clientDisconnected {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+			}
+			if failure := droidBodyReadFailover(ctx, c, account, resp, context.DeadlineExceeded); failure != nil {
+				return nil, failure
 			}
 			logger.LegacyPrintf("service.openai_gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
@@ -1605,6 +1621,9 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if failure := droidBodyReadFailover(ctx, c, account, resp, err); failure != nil {
+			return nil, failure
+		}
 		return nil, err
 	}
 	observer := upstreamResponseModelObserverFromContext(c)

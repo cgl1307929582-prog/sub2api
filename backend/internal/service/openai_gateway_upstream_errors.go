@@ -397,6 +397,7 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
+	markDroidHTTPRetry(account, failoverErr, shouldDisable, upstreamMsg)
 	return failoverErr
 }
 
@@ -688,6 +689,13 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		Detail:             upstreamDetail,
 	})
 	if shouldDisable {
+		if account.IsDroid() {
+			failure := s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, body, upstreamMsg, shouldDisable, false)
+			if ctx.Err() != nil {
+				failure.RetryableOnSameAccount = false
+			}
+			return nil, failure
+		}
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
@@ -887,6 +895,13 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		Detail:             upstreamDetail,
 	})
 	if shouldDisable {
+		if account.IsDroid() {
+			failure := s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, body, upstreamMsg, shouldDisable, false)
+			if c.Request.Context().Err() != nil {
+				failure.RetryableOnSameAccount = false
+			}
+			return nil, failure
+		}
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,

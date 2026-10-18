@@ -147,9 +147,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	}
 
 	if clientStream {
-		return s.handleResponsesStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping, account.IsDroid())
+		return s.handleResponsesStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping, account.IsDroid(), account)
 	}
-	return s.handleResponsesBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping, account.IsDroid())
+	return s.handleResponsesBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping, account.IsDroid(), account)
 }
 
 // handleResponsesBufferedFromNativeAnthropic reads Anthropic SSE events, assembles
@@ -164,6 +164,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 	requireTerminal bool,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -177,6 +178,18 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 	terminalSeen, upstreamFailed := false, false
+	// Classify only actual reads, before fallback output or usage is returned.
+	// Optional account preserves direct callers without inferring a platform from requireTerminal.
+	retryRead := func(err error) *UpstreamFailoverError {
+		if terminalSeen || len(accounts) == 0 {
+			return nil
+		}
+		if errors.Is(err, errAnthropicNativeStreamIdle) {
+			// The pump's sentinel is an independent upstream read timeout, not a net.Error.
+			err = context.DeadlineExceeded
+		}
+		return droidBodyReadFailover(context.Background(), c, accounts[0], resp, err)
+	}
 
 	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
 	streamInterval := s.anthropicNativeStreamInterval()
@@ -207,6 +220,9 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 	for {
 		line, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
@@ -220,6 +236,9 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 
 		dataLine, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
@@ -349,6 +368,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 	requireTerminal bool,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -368,6 +388,16 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 
 	var usage ClaudeUsage
 	terminalSeen, upstreamFailed := false, false
+	// Never replay a successful terminal event, even if the upstream later fails.
+	retryRead := func(err error) *UpstreamFailoverError {
+		if terminalSeen || len(accounts) == 0 {
+			return nil
+		}
+		if errors.Is(err, errAnthropicNativeStreamIdle) {
+			err = context.DeadlineExceeded
+		}
+		return droidBodyReadFailover(context.Background(), c, accounts[0], resp, err)
+	}
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
@@ -477,6 +507,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	for {
 		line, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
@@ -489,6 +522,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 
 		dataLine, rerr := pump.next()
 		if rerr != nil {
+			if retryErr := retryRead(rerr); retryErr != nil {
+				return nil, retryErr
+			}
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}

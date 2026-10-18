@@ -26,10 +26,11 @@ import (
 // administrator/compliance/audit middleware. The worker origin and credential
 // are deployment configuration, never account fields or browser input.
 type ColabControlHandler struct {
-	base       string
-	secretFile string
-	client     *http.Client
-	startMu    sync.Mutex
+	base             string
+	secretFile       string
+	client           *http.Client
+	startMu          sync.Mutex
+	telemetryTimeout time.Duration
 }
 
 func NewColabControlHandler(cfg *config.Config) *ColabControlHandler {
@@ -140,7 +141,15 @@ func (h *ColabControlHandler) Snapshot(c *gin.Context) {
 		response.Error(c, status, err.Error())
 		return
 	}
-	telemetry, _, telemetryErr := h.call(c.Request.Context(), "GET", "/telemetry", nil)
+	// Telemetry is optional; bound the entire call, including response body reads,
+	// independently of the longer timeout used by control operations.
+	timeout := h.telemetryTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	telemetryCtx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+	telemetry, _, telemetryErr := h.call(telemetryCtx, "GET", "/telemetry", nil)
 	// New-API gateway usage is not Sub2API usage. The frontend queries Sub2API's
 	// account-filtered usage API separately; retain only worker hardware metrics.
 	delete(telemetry, "gateway")

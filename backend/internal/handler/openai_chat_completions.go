@@ -168,6 +168,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var droidReplay droidReplayBarrier
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
@@ -178,8 +179,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if failoverClientGone(c) {
 			return
 		}
+		if droidReplay.stop(h, c, false) {
+			return
+		}
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+		selection, scheduleDecision, err := droidReplay.selectAccount(h,
 			c.Request.Context(),
 			apiKey.GroupID,
 			"",
@@ -194,6 +198,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if droidReplay.selectionFailed(h, c, false, streamStarted) {
+				return
+			}
 			if failoverClientGone(c) {
 				reqLog.Info("openai_chat_completions.account_select_aborted_client_disconnected", zap.Error(err))
 				return
@@ -233,7 +240,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		accountReleaseFunc, slotResult := droidReplay.acquireSlot(h, c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog, false)
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号；否决次数达上限则按无可用账号终止。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
@@ -252,6 +259,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		forwardBody := body
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+		}
+		if droidReplay.stop(h, c, false) {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			return
 		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
@@ -338,6 +351,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						)
 						return
 					}
+					droidReplay.remember(account, failoverErr)
+					if h.stopDroidCommittedReplay(c, account, failoverErr, false) {
+						return
+					}
 					if c.Writer.Size() != writerSizeBeforeForward {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
 						h.handleFailoverExhausted(c, failoverErr, true)
@@ -351,7 +368,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					// Pool mode: retry on the same account
-					if failoverErr.RetryableOnSameAccount {
+					if replay, terminal := droidReplay.retry(h, c, account, failoverErr, false, streamStarted); terminal {
+						return
+					} else if replay {
+						continue
+					}
+					if !account.IsDroid() && failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 							sameAccountRetryCount[account.ID]++

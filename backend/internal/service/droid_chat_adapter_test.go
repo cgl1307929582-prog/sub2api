@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -295,4 +296,106 @@ func TestDroidChatStreamFailsOnErrorEventWithEmptyData(t *testing.T) {
 	data, err = io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Contains(t, string(data), "data: [DONE]")
+}
+
+// Supply bytes followed by a real read failure, including n > 0 with err.
+type droidChatFailingBody struct {
+	data   string
+	err    error
+	closed bool
+}
+
+func (b *droidChatFailingBody) Read(p []byte) (int, error) {
+	n := copy(p, b.data)
+	b.data = b.data[n:]
+	if len(b.data) == 0 {
+		return n, b.err
+	}
+	return n, nil
+}
+
+func (b *droidChatFailingBody) Close() error {
+	b.closed = true
+	return nil
+}
+
+func TestDroidChatSSEReaderReadFailureDoesNotCommit(t *testing.T) {
+	for _, tc := range []struct {
+		name, wire string
+		err        error
+	}{
+		{"timeout", "", fmt.Errorf("factory_test_secret: %w", context.DeadlineExceeded)},
+		{"partial/unexpectedEOF", `data: {"choices":`, fmt.Errorf("factory_test_secret: %w", io.ErrUnexpectedEOF)},
+		{"partial/reset", `data: {"choices":`, fmt.Errorf("factory_test_secret: %w", syscall.ECONNRESET)},
+		{"partial/cleanEOF", `data: {"choices":`, io.EOF},
+		{"validJSONWithoutBoundary", "data: {\"choices\":[]}\n", io.EOF},
+		{"unterminatedDONE", "data: [DONE]\n", io.EOF},
+		{"emptyEOF", "", io.EOF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := &droidChatFailingBody{data: tc.wire, err: tc.err}
+			reader := newDroidChatSSEReader(source, normalizeDroidChatJSON, nil, false)
+			data, err := io.ReadAll(reader)
+			require.Error(t, err)
+			require.Empty(t, data, "neither partial events nor synthetic error frames may commit a read failure")
+			require.True(t, isDroidRecoverableBodyReadError(err), "%T: %v", err, err)
+			require.NotContains(t, err.Error(), "factory_test_secret")
+			require.NoError(t, reader.Close())
+			require.True(t, source.closed)
+		})
+	}
+}
+
+func TestDroidChatSSEReaderFirstEventImmediateThenReadFailure(t *testing.T) {
+	source, writer := io.Pipe()
+	reader := newDroidChatSSEReader(source, normalizeDroidChatJSON, nil, false)
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+	const event = "data: {\"choices\":[{\"delta\":{\"content\":\"healthy\"}}]}\n\n"
+	first := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		n, err := reader.Read(buf)
+		if err != nil {
+			first <- err.Error()
+			return
+		}
+		first <- string(buf[:n])
+	}()
+	_, err := io.WriteString(writer, event)
+	require.NoError(t, err)
+	select {
+	case got := <-first:
+		require.Equal(t, event, got, "a full first event must not await the next event")
+	case <-time.After(time.Second):
+		t.Fatal("first event blocked behind a later upstream read")
+	}
+	require.NoError(t, writer.CloseWithError(fmt.Errorf("factory_test_secret: %w", syscall.ECONNRESET)))
+	rest, err := io.ReadAll(reader)
+	require.Error(t, err, "a committed stream must not become successful on disconnect")
+	require.True(t, isDroidRecoverableBodyReadError(err))
+	require.Empty(t, rest, "do not synthesize an error event or DONE for a read failure")
+	require.NotContains(t, err.Error(), "factory_test_secret")
+}
+
+func TestDroidChatSSEReaderProtocolErrorsRemainNonRetryable(t *testing.T) {
+	for _, wire := range []string{
+		"event: error\ndata: {}\n\n",
+		"data: {invalid}\n\n",
+		"data: " + strings.Repeat("x", droidErrorJSONMaxBytes) + "\n\n",
+	} {
+		reader := newDroidChatSSEReader(io.NopCloser(strings.NewReader(wire)), normalizeDroidChatJSON, nil, false)
+		data, err := io.ReadAll(reader)
+		require.Error(t, err)
+		require.False(t, isDroidRecoverableBodyReadError(err))
+		require.Contains(t, string(data), `"error"`)
+		require.NotContains(t, string(data), "[DONE]")
+	}
+}
+
+func TestDroidChatSSEReaderNormalCompletion(t *testing.T) {
+	wire := "data: {\"choices\":[]}\n\ndata: [DONE]\n\n"
+	reader := newDroidChatSSEReader(io.NopCloser(strings.NewReader(wire)), normalizeDroidChatJSON, nil, false)
+	data, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, wire, string(data))
 }

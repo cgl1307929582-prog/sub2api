@@ -208,8 +208,10 @@ func (r *droidChatSSEReader) Read(p []byte) (int, error) {
 		data, err := r.next()
 		if err != nil {
 			r.terminal = err
-			if !errors.Is(err, io.EOF) {
-				// Safe constant: upstream error text may contain credentials.
+			if !errors.Is(err, io.EOF) && !isDroidRecoverableBodyReadError(err) {
+				// Protocol/application errors retain their safe error frame. Real
+				// read failures must reach the service before any synthetic output
+				// can close its pre-commit retry window.
 				r.ready = []byte("data: " + droidRedactedErrorJSON + "\n\n")
 			}
 		} else {
@@ -233,16 +235,17 @@ func (r *droidChatSSEReader) next() ([]byte, error) {
 			return []byte("data: [DONE]\n\n"), nil
 		}
 		if !r.done {
-			return nil, errors.New("factory Chat stream ended before DONE")
+			return nil, io.ErrUnexpectedEOF
 		}
 		return nil, io.EOF
 	}
 	var data []byte
-	event, sawData := "", false
+	event, sawData, complete := "", false, false
 	for r.scanner.Scan() {
 		line := r.scanner.Bytes()
 		if len(line) == 0 {
 			if len(data) > 0 {
+				complete = true
 				break
 			}
 			if sawData && droidSSEEventIsError(event) {
@@ -266,6 +269,11 @@ func (r *droidChatSSEReader) next() ([]byte, error) {
 		if len(data) > droidErrorJSONMaxBytes {
 			return nil, errors.New("factory Chat stream frame exceeded size limit")
 		}
+	}
+	// Scanner returns a final unterminated line at EOF. It is not a complete
+	// SSE event: never normalize it into a client-visible frame (or DONE).
+	if !complete && len(data) > 0 && r.scanner.Err() == nil {
+		return nil, io.ErrUnexpectedEOF
 	}
 	if len(data) == 0 || r.scanner.Err() != nil {
 		if err := r.scanner.Err(); err != nil {
