@@ -71,6 +71,12 @@ vi.mock('@/api/admin/usage', () => ({
   },
 }))
 
+vi.mock('@/api/admin/conversations', () => ({
+  getConversationConfig: vi.fn().mockResolvedValue({ enabled: false, retention_days: 7 }),
+  updateConversationConfig: vi.fn(),
+  getConversation: vi.fn(),
+}))
+
 vi.mock('file-saver', () => ({ saveAs }))
 
 vi.mock('xlsx', () => ({

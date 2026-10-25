@@ -267,6 +267,8 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+	// ResponseEvent observes JSON frames without changing forwarding or billing.
+	ResponseEvent func(turn int, payload []byte)
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

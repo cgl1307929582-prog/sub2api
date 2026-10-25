@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,29 @@ func (d *openAIWSSingleConnDialer) Dial(
 	proxyURL string,
 ) (openAIWSClientConn, int, http.Header, error) {
 	return d.conn, 0, nil, nil
+}
+
+// Capture the callback ordering as well as payloads: billing's AfterTurn must
+// observe the terminal frame before committing the corresponding conversation.
+type conversationWSTestObserver struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (o *conversationWSTestObserver) response(turn int, payload []byte) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.events = append(o.events, fmt.Sprintf("%d:%s", turn, gjson.GetBytes(payload, "type").String()))
+}
+func (o *conversationWSTestObserver) end(turn int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.events = append(o.events, fmt.Sprintf("%d:end", turn))
+}
+func (o *conversationWSTestObserver) snapshot() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]string(nil), o.events...)
 }
 
 func TestOpenAIWSDownstreamWriteContext_CancellationOwnership(t *testing.T) {
@@ -148,8 +172,11 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 
 	serverErrCh := make(chan error, 1)
 	turnTerminalCh := make(chan string, 2)
+	observer := new(conversationWSTestObserver)
 	hooks := &OpenAIWSIngressHooks{
-		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+		ResponseEvent: observer.response,
+		AfterTurn: func(turn int, result *OpenAIForwardResult, turnErr error) {
+			observer.end(turn)
 			if turnErr == nil && result != nil {
 				turnTerminalCh <- result.UpstreamTerminalEvent
 			}
@@ -241,6 +268,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	require.Equal(t, int64(1), metrics.AcquireTotal, "同一 ingress 会话多 turn 应只获取一次上游 lease")
 	require.Equal(t, 1, captureDialer.DialCount(), "同一 ingress 会话应保持同一上游连接")
 	require.Len(t, captureConn.writes, 2, "应向同一上游连接发送两轮 response.create")
+	require.Equal(t, []string{"1:response.output_item.done", "1:response.completed", "1:end", "2:response.completed", "2:end"}, observer.snapshot())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_LeaseLossSendsRetryClose(t *testing.T) {
@@ -1023,8 +1051,11 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	serverErrCh := make(chan error, 1)
 	resultCh := make(chan *OpenAIForwardResult, 1)
+	observer := new(conversationWSTestObserver)
 	hooks := &OpenAIWSIngressHooks{
-		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+		ResponseEvent: observer.response,
+		AfterTurn: func(turn int, result *OpenAIForwardResult, turnErr error) {
+			observer.end(turn)
 			if turnErr == nil && result != nil {
 				resultCh <- result
 			}
@@ -1116,6 +1147,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
 	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
+	require.Equal(t, []string{"1:response.completed", "1:end"}, observer.snapshot())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridgeBoundaries(t *testing.T) {
@@ -1444,8 +1476,11 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRe
 
 	serverErrCh := make(chan error, 1)
 	resultCh := make(chan *OpenAIForwardResult, 1)
+	observer := new(conversationWSTestObserver)
 	hooks := &OpenAIWSIngressHooks{
-		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+		ResponseEvent: observer.response,
+		AfterTurn: func(turn int, result *OpenAIForwardResult, turnErr error) {
+			observer.end(turn)
 			if turnErr == nil && result != nil {
 				resultCh <- result
 			}
@@ -1544,6 +1579,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRe
 	require.Equal(t, "true", upstream.lastReq.Header.Get(responsesLiteHeader))
 	require.True(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Bool())
+	require.Equal(t, []string{"1:response.output_text.delta", "1:response.done", "1:end"}, observer.snapshot())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPolicyViolation(t *testing.T) {

@@ -26,6 +26,9 @@
         :default-sort-order="defaultSortOrder"
         @sort="(key, order) => $emit('sort', key, order)"
       >
+        <template #cell-conversation="{ row }">
+          <button class="text-sm text-primary-600 hover:underline dark:text-primary-400" data-testid="view-conversation" @click="$emit('conversationClick', row.id)">{{ t('admin.usage.conversation.view') }}</button>
+        </template>
         <template #cell-user="{ row }">
           <div class="text-sm">
             <button
@@ -613,6 +616,7 @@ const props = withDefaults(defineProps<Props>(), {
   flat: false
 })
 const emit = defineEmits<{
+	conversationClick: [id: number]
   userClick: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
