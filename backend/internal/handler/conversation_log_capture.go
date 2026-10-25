@@ -131,6 +131,10 @@ func conversationParts(content gjson.Result) string {
 			parts = append(parts, "[file]")
 		case "input_audio", "audio":
 			parts = append(parts, "[audio]")
+		case "refusal":
+			if value := part.Get("refusal"); value.Type == gjson.String {
+				parts = append(parts, value.String())
+			}
 		}
 		if kind == "" && (part.Get("inlineData").Exists() || part.Get("fileData").Exists()) {
 			parts = append(parts, "[attachment]")
@@ -154,11 +158,13 @@ func conversationInput(body []byte) (string, string, bool) {
 	if messages.Type == gjson.String {
 		return messages.String(), model, stream
 	}
-	if !messages.Exists() {
+	geminiInput := !messages.Exists()
+	if geminiInput {
 		messages = root.Get("contents")
 	}
 	messages.ForEach(func(_, message gjson.Result) bool {
-		if message.Get("role").String() != "user" {
+		role := message.Get("role").String()
+		if role != "user" && (!geminiInput || role != "") {
 			return true
 		}
 		content := message.Get("content")
@@ -264,8 +270,11 @@ func responseVisibleText(root gjson.Result) string {
 	if root.Get("content").IsArray() {
 		return conversationParts(root.Get("content"))
 	}
-	if message := root.Get("choices.0.message.content"); message.Exists() {
-		return conversationParts(message)
+	if message := root.Get("choices.0.message"); message.Exists() {
+		if text := conversationParts(message.Get("content")); text != "" {
+			return text
+		}
+		return message.Get("refusal").String()
 	}
 	if output := root.Get("output_text"); output.Type == gjson.String {
 		return output.String()
@@ -338,8 +347,12 @@ func (p *conversationResponseCapture) eventJSON(raw []byte) {
 			p.errorText = "upstream_error"
 		}
 	default:
-		if root.Get("choices.0.delta").Exists() {
-			p.appendText(conversationParts(root.Get("choices.0.delta.content")))
+		if root.Get("choices.0").Exists() {
+			text := conversationParts(root.Get("choices.0.delta.content"))
+			if text == "" {
+				text = root.Get("choices.0.delta.refusal").String()
+			}
+			p.appendText(text)
 			p.deltaSeen = true
 			if reason := root.Get("choices.0.finish_reason"); reason.Exists() && reason.Type != gjson.Null {
 				p.complete = true

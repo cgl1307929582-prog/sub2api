@@ -34,6 +34,7 @@ func TestConversationInputLatestHumanText(t *testing.T) {
 		{"responses string", `{"input":"hello"}`, "hello"},
 		{"responses array", `{"instructions":"hidden","input":[{"role":"developer","content":"hidden"},{"role":"user","content":[{"type":"input_text","text":"你好"},{"type":"input_file","file_data":"SECRET BYTES"}]}]}`, "你好\n[file]"},
 		{"gemini", `{"contents":[{"role":"user","parts":[{"text":"question"},{"inlineData":{"data":"BYTES"}}]}]}`, "question\n[attachment]"},
+		{"gemini default user", `{"contents":[{"parts":[{"text":"question"}]},{"role":"model","parts":[{"text":"history reply"}]},{"parts":[{"functionResponse":{"response":{"text":"private tool result"}}}]}]}`, "question"},
 		{"invalid", `{"input":`, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) { text, _, _ := conversationInput([]byte(tc.body)); require.Equal(t, tc.text, text) })
@@ -48,6 +49,7 @@ func TestConversationStreamProtocolsAndFragmentation(t *testing.T) {
 		{"anthropic", "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你好\"}}\n\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"HIDDEN\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n", "你好", true},
 		{"responses dedup", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\"}]}]}}\n\n", "answer", true},
 		{"chat", "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\r\n\r\ndata: [DONE]\r\n\r\n", "hello", true},
+		{"chat refusal", "data: {\"choices\":[{\"delta\":{\"refusal\":\"Cannot answer\"}}]}\n\ndata: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n", "Cannot answer", true},
 		{"gemini", "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"private\",\"thought\":true},{\"text\":\"world\"}]},\"finishReason\":\"STOP\"}]}\n\n", "world", true},
 		{"interrupted", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n", "partial", false},
 		{"multiline SSE", "data: {\"choices\":\ndata: [{\"delta\":{\"content\":\"yes\"},\"finish_reason\":\"stop\"}]}\n\n", "yes", true},
@@ -142,6 +144,8 @@ func TestConversationOrdinaryRepliesAndErrors(t *testing.T) {
 	}{
 		{`{"content":[{"type":"thinking","thinking":"hidden"},{"type":"text","text":"answer"}]}`, "answer", true},
 		{`{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"reply"}]}]}`, "reply", true},
+		{`{"output":[{"type":"message","role":"assistant","content":[{"type":"refusal","refusal":"Cannot answer"}]}]}`, "Cannot answer", true},
+		{`{"choices":[{"message":{"role":"assistant","content":null,"refusal":"Cannot answer"}}]}`, "Cannot answer", true},
 		{`{"error":{"message":"upstream failed"}}`, "", false},
 	} {
 		p := &conversationResponseCapture{}
