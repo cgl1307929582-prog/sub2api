@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
@@ -117,4 +118,19 @@ func TestConversationWriteFailureIsObservable(t *testing.T) {
 	defer s.Stop()
 	s.Record(&ConversationLog{UserID: 1, APIKeyID: 2, UserText: "question"})
 	require.Eventually(t, func() bool { return s.Stats()["write_failures"] == 1 }, time.Second, 10*time.Millisecond)
+}
+
+func TestConversationQueueDoesNotRetainRequestBuffer(t *testing.T) {
+	s := NewConversationLogService(&conversationRepoStub{}, &conversationSettingsStub{})
+	defer s.Stop()
+	require.NoError(t, s.SetConfig(context.Background(), ConversationLogConfig{Enabled: true, RetentionDays: 7}))
+	request := strings.Repeat("x", 8*1024*1024)
+	text := request[1024:1032]
+	s.Record(&ConversationLog{UserID: 1, APIKeyID: 2, UserText: text, AssistantText: text, ErrorText: text, Model: text, Endpoint: text})
+	entry := <-s.queue
+	for _, stored := range []string{entry.UserText, entry.AssistantText, entry.ErrorText, entry.Model, entry.Endpoint} {
+		require.Equal(t, text, stored)
+		// Equal text must have its own storage, not retain the entire request.
+		require.False(t, unsafe.StringData(text) == unsafe.StringData(stored))
+	}
 }

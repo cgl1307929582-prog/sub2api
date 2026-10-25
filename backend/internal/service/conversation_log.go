@@ -165,7 +165,9 @@ func ConversationRequestID(ctx context.Context) string { return resolveUsageBill
 func BoundConversationText(text string, limit int) (string, bool) {
 	text = strings.ReplaceAll(strings.ToValidUTF8(text, "�"), "\x00", "�")
 	if len(text) <= limit {
-		return text, false
+		// Parsed JSON strings may be small slices of a multi-megabyte request.
+		// Detach them so queued records retain only the bytes we budget for.
+		return strings.Clone(text), false
 	}
 	end := limit
 	for end > 0 && !utf8.RuneStart(text[end]) {
