@@ -417,8 +417,10 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if cause == nil {
 			cause = io.ErrUnexpectedEOF
 		}
-		if failure := droidBodyReadFailover(nil, c, account, resp, cause); failure != nil {
-			return nil, failure
+		if c.Request != nil {
+			if failure := droidBodyReadFailover(c.Request.Context(), c, account, resp, cause); failure != nil {
+				return nil, failure
+			}
 		}
 	}
 	if scanErr != nil && !errors.Is(scanErr, context.Canceled) && !errors.Is(scanErr, context.DeadlineExceeded) {
@@ -538,8 +540,10 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		if failure := droidBodyReadFailover(nil, c, account, resp, err); failure != nil {
-			return nil, failure
+		if c.Request != nil {
+			if failure := droidBodyReadFailover(c.Request.Context(), c, account, resp, err); failure != nil {
+				return nil, failure
+			}
 		}
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
 			writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")

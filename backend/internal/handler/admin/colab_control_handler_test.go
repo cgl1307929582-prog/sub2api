@@ -102,7 +102,10 @@ func TestColabControlTelemetryTimeoutPreservesState(t *testing.T) {
 				if flushBody {
 					// Force Do to return headers while ReadAll remains blocked.
 					fmt.Fprint(w, `{"resources":`)
-					w.(http.Flusher).Flush()
+					if err := http.NewResponseController(w).Flush(); err != nil {
+						t.Errorf("flush telemetry headers: %v", err)
+						return
+					}
 				}
 				select {
 				case <-r.Context().Done():
