@@ -2,6 +2,7 @@
   <AppLayout>
     <div class="space-y-6">
       <UsageStatsCards :stats="usageStats" />
+      <ConversationLogSettings />
       <!-- Charts Section -->
       <div class="space-y-4">
         <div class="card p-4">
@@ -133,6 +134,7 @@
             :default-sort-order="'desc'"
             @sort="handleSort"
             @userClick="handleUserClick"
+            @conversationClick="conversationRecordId = $event"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
@@ -164,6 +166,7 @@
         </div>
       </div>
       <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
+      <ConversationDetailDialog :show="conversationRecordId !== null" :record-id="conversationRecordId" @close="conversationRecordId = null" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
@@ -195,6 +198,8 @@ import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usag
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import ConversationLogSettings from '@/components/admin/usage/ConversationLogSettings.vue'
+import ConversationDetailDialog from '@/components/admin/usage/ConversationDetailDialog.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
@@ -209,6 +214,7 @@ import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat,
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const conversationRecordId = ref<number | null>(null)
 type DistributionMetric = 'tokens' | 'actual_cost'
 type EndpointSource = 'inbound' | 'upstream' | 'path'
 type ModelDistributionSource = 'requested' | 'upstream' | 'mapping'
@@ -638,6 +644,7 @@ const HIDDEN_COLUMNS_PREV_VERSION = 'request-id-hidden-by-default'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'upstream-request-id-hidden-by-default'
 
 const allColumns = computed(() => [
+  { key: 'conversation', label: t('admin.usage.conversation.title'), sortable: false },
   { key: 'user', label: t('admin.usage.user'), sortable: false },
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
   { key: 'account', label: t('admin.usage.account'), sortable: false },

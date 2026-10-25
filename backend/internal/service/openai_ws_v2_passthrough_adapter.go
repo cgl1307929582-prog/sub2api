@@ -1167,10 +1167,16 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
 	failureAccountSideEffectsApplied := false
+	var observedUpstreamFrameConn openaiwsv2.FrameConn = relayUpstreamFrameConn
+	if hooks != nil && hooks.ResponseEvent != nil {
+		observedUpstreamFrameConn = &openAIWSObservedFrameConn{FrameConn: relayUpstreamFrameConn, observe: func(payload []byte) {
+			hooks.ResponseEvent(int(completedTurns.Load())+1, payload)
+		}}
+	}
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
-		UpstreamConn:       relayUpstreamFrameConn,
+		UpstreamConn:       observedUpstreamFrameConn,
 		FirstClientMessage: firstClientMessage,
 		Options: openaiwsv2.RelayOptions{
 			WriteTimeout:       s.openAIWSWriteTimeout(),

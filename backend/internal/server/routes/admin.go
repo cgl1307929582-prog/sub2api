@@ -703,6 +703,12 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	usage := admin.Group("/usage")
+	if h.ConversationLog != nil {
+		usage.GET("/conversation-config", h.ConversationLog.GetConfig)
+		usage.PUT("/conversation-config", h.ConversationLog.UpdateConfig)
+		usage.GET("/:id/conversation", h.ConversationLog.GetUsage)
+		usage.GET("/conversation-errors/:id", h.ConversationLog.GetError)
+	}
 	{
 		usage.GET("", h.Admin.Usage.List)
 		usage.GET("/stats", h.Admin.Usage.Stats)

@@ -483,10 +483,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}, nil
 	}
 
-	writeClientMessage := func(message []byte) error {
+	writeClientMessage := func(turn int, message []byte) error {
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		if hooks != nil && hooks.ResponseEvent != nil {
+			hooks.ResponseEvent(turn, message)
+		}
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 
@@ -689,7 +692,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				currentBridgePayload.imageInputSize,
 				grokCacheIdentity,
 				turn,
-				writeClientMessage,
+				func(message []byte) error { return writeClientMessage(turn, message) },
 			)
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
@@ -1185,7 +1188,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						clientMessage = rewritten
 					}
 				}
-				if err := writeClientMessage(clientMessage); err != nil {
+				if err := writeClientMessage(turn, clientMessage); err != nil {
 					if isOpenAIWSClientDisconnectError(err) {
 						clientDisconnected = true
 						closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)

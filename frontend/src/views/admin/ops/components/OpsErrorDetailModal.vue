@@ -12,6 +12,7 @@
     </div>
 
     <div v-else class="space-y-6 p-6">
+      <button v-if="errorType !== 'upstream'" class="btn btn-secondary" @click="showConversation = true">{{ t('admin.usage.conversation.view') }}</button>
       <!-- Summary -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
@@ -222,12 +223,14 @@
       </button>
     </template>
   </BaseDialog>
+  <ConversationDetailDialog :show="show && showConversation" :record-id="errorId" kind="error" @close="showConversation = false" />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConversationDetailDialog from '@/components/admin/usage/ConversationDetailDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
@@ -253,6 +256,8 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const loading = ref(false)
+const showConversation = ref(false)
+watch(() => props.errorId, () => { showConversation.value = false })
 const detail = ref<OpsErrorDetail | null>(null)
 
 const showUpstreamList = computed(() => props.errorType === 'request')

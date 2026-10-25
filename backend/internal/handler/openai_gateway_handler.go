@@ -35,6 +35,7 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
+	conversationLogs           *service.ConversationLogService
 	compositeResolver          *service.CompositeRouteResolver
 	gatewayService             *service.OpenAIGatewayService
 	billingCacheService        *service.BillingCacheService
@@ -3038,7 +3039,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 			return
 		}
+		conversation := newConversationWSCapture(h.conversationLogs, apiKey, ctx, c.Request.URL.Path)
+		conversation.start(1, wsAttemptMessage, reqModel)
 		hooks := &service.OpenAIWSIngressHooks{
+			ResponseEvent:               conversation.response,
 			ClientLifecycleContext:      clientLifecycleCtx,
 			InitialRequestModel:         reqModel,
 			InitialTurnStartedAt:        firstTurnStartedAt,
@@ -3047,6 +3051,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			ReasoningEffortMappings:     reasoningEffortMappings,
 			TurnStarted:                 recordTurnStart,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				conversation.start(turn, payload, originalModel)
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
@@ -3161,6 +3166,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return checkSimpleModeTurnBilling()
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				conversation.end(turn, result, turnErr)
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
 				// 每次 attempt 都清 cyber mark；failover 链结束前保留 recorded guard，

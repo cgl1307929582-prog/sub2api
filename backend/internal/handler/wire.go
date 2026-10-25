@@ -183,6 +183,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	conversationLogHandler *ConversationLogHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	apiKeyHandler *APIKeyHandler,
@@ -208,7 +209,9 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
+	openaiGatewayHandler.conversationLogs = conversationLogHandler.service
 	return &Handlers{
+		ConversationLog:  conversationLogHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		APIKey:           apiKeyHandler,
@@ -235,6 +238,7 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	NewConversationLogHandler,
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
