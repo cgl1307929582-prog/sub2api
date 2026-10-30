@@ -22,7 +22,7 @@ func TestDroidCatalogAccountUpdateKeepsLockedDatabaseSnapshot(t *testing.T) {
 			mock.ExpectQuery(`(?s)SELECT.*extra -> 'droid_model_catalog'.*FOR NO KEY UPDATE`).
 				WithArgs(account.ID, platform, account.Type, string(credentials), nil).
 				WillReturnRows(sqlmock.NewRows(openCodeGoMergeMockColumns()).AddRow(
-					false, false, false, nil, nil, nil, nil, nil, nil, false, nil, nil,
+					false, false, false, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil,
 					`{"source":"https://docs.factory.com/models.md","models":["claude-latest"]}`))
 			extra, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil, nil)
 			require.NoError(t, err)
