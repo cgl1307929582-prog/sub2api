@@ -30,6 +30,7 @@ import type {
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
+  GrokModelDiagnostics,
   OpenCodeGoUsageSettings,
   OpenCodeGoUsageState
 } from '@/types'
@@ -614,6 +615,8 @@ export interface SyncUpstreamModelsResult {
   unsupported_models?: string[]
   metadata?: Record<string, UpstreamModelMetadata>
   warnings?: UpstreamModelSyncWarning[]
+  discovery_source?: 'upstream' | 'configured_fallback'
+  grok_model_diagnostics?: GrokModelDiagnostics
 }
 
 export interface UpstreamModelSyncWarning {
