@@ -52,7 +52,7 @@ func TestDroidRoundTripSanitizesNestedErrorsBeforeSharedExtraction(t *testing.T)
 }
 
 func TestDroidGatewayProtocolMatrix(t *testing.T) {
-	for _, model := range DefaultDroidModelIDs() {
+	for _, model := range append(DefaultDroidModelIDs(), "muse-spark-1.2", "muse-spark-1.3") {
 		for _, ingress := range routingMatrixIngresses() {
 			t.Run(model+"/"+ingress.name, func(t *testing.T) {
 				upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
@@ -89,6 +89,7 @@ func TestDroidAccountConnectionUsesSameTransport(t *testing.T) {
 		response func() *http.Response
 	}{
 		{"claude-sonnet-4-6", adaptiveCNAnthropicTestResponse}, {"gpt-5.4", adaptiveCNResponsesTestResponse}, {"glm-5", adaptiveCNChatTestResponse},
+		{"muse-spark-1.2", adaptiveCNChatTestResponse}, {"muse-spark-1.3", adaptiveCNChatTestResponse},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			account := droidTestAccount()
@@ -98,6 +99,10 @@ func TestDroidAccountConnectionUsesSameTransport(t *testing.T) {
 			require.Len(t, upstream.requests, 1)
 			_, _, path := droidModelRoute(tc.model)
 			require.Equal(t, path, upstream.requests[0].URL.Path)
+			if strings.HasPrefix(tc.model, "muse-spark-") {
+				require.Equal(t, "/api/llm/o/v1/chat/completions", path)
+				require.Equal(t, "fireworks", upstream.requests[0].Header.Get("X-API-Provider"))
+			}
 			require.Equal(t, "Bearer factory_test_secret", upstream.requests[0].Header.Get("Authorization"))
 			require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 		})

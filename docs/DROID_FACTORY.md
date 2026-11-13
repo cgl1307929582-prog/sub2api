@@ -39,7 +39,7 @@ Pi 压缩对话后添加的固定开场白 `The conversation history before this
 | `grok-*` | `/api/llm/o/v1/responses` | `xai` | Responses |
 | `gemini-*` | `/api/llm/g/v1/generate` | `google` | Chat / Responses / Messages，经内部转换 |
 | `mistral-*` | `/api/llm/o/v1/chat/completions` | `mistral` | Chat Completions |
-| `glm-*`、`kimi-*`、`deepseek-*`、`qwen*`、`nemotron-*`、`inkling` | `/api/llm/o/v1/chat/completions` | `fireworks` | Chat Completions |
+| `glm-*`、`kimi-*`、`deepseek-*`、`qwen*`、`nemotron-*`、`muse-spark-*`、`inkling` | `/api/llm/o/v1/chat/completions` | `fireworks` | Chat Completions |
 
 默认主机为 `https://api.factory.ai`。上游路径与模型族须匹配；未支持的模型族在发送前拒绝，不按上游故障轮换账号。高级地址配置沿用平台现有校验，不另开安全豁免。
 
@@ -52,6 +52,8 @@ Pi 压缩对话后添加的固定开场白 `The conversation history before this
 **这是官方公开目录，不是该 Key 的模型权限清单。** Factory 当前标准 `/models` 路径未提供可用列表；具体权限、地区、额度和即时可用性仍需账号测试确认。同步只纳入上表支持的模型族，未知协议和图像生成模型仍会显示排除数量，不宣称可转发。只读取官方名称和 reasoning 档位，不推测上下文、价格或输出上限。本地配额和 token 计费与下面的 Factory 套餐额度分别记录。
 
 ## Gemini 与其他新增模型
+
+2026-11-13 补充 Muse Spark 的 Fireworks Chat Completions 路由，复用已有 Messages、Responses、Chat 转换和账号测试。已在实际 Factory 请求中确认 `muse-spark-1.2` 返回 `accounts/fireworks/models/muse-spark-1p2-open`、文本回复和 `stop` 终态。模型目录继续从官方文档同步，不把某个账号的可用性硬编码进默认列表。同日所测账号的 `muse-spark-1.3`、`nemotron-3.5-super` 返回地区不可用，`gpt-6.1-sol-ultrafast` 要求组织管理员开通；这些限制需要单独处理，目录或协议支持不代表该账号已可调用。Beam 尚无成功调用证据，继续保持未适配状态。
 
 Factory 的 Google 端点始终返回 SSE，并拒绝请求体中的 `stream` 字段。传输层将共享 Chat 请求转换为 Google 请求，再将流式片段转换成 Chat 格式；普通响应会聚合成 JSON。三种入站与管理端账号测试共用这一转换，不需要重建账号。Droid 的固定模型协议优先于旧账号保存的协议规则，避免新增 Grok 被旧规则送入 Chat 端点。
 
