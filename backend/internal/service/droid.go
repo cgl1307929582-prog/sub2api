@@ -75,7 +75,7 @@ func droidModelRoute(model string) (protocol, provider, path string) {
 		return APIProtocolChatCompletions, "mistral", "/api/llm/o/v1/chat/completions"
 	case strings.HasPrefix(model, "glm-"), strings.HasPrefix(model, "kimi-"),
 		strings.HasPrefix(model, "deepseek-"), strings.HasPrefix(model, "qwen"),
-		strings.HasPrefix(model, "nemotron-"), model == "inkling":
+		strings.HasPrefix(model, "nemotron-"), strings.HasPrefix(model, "muse-spark-"), model == "inkling":
 		return APIProtocolChatCompletions, "fireworks", "/api/llm/o/v1/chat/completions"
 	default:
 		return "", "", ""
