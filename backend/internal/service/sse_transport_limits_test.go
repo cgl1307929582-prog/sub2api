@@ -204,28 +204,28 @@ func TestAnthropicCompatTransportFailureNeverFinalizesSuccess(t *testing.T) {
 			return r.Usage.InputTokens, e
 		}},
 		{"native_cc_buffered", false, func(resp *http.Response, c *gin.Context) (int, error) {
-			r, e := openai.handleCCBufferedFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now())
+			r, e := openai.handleCCBufferedFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now(), false)
 			if r == nil {
 				return 0, e
 			}
 			return r.Usage.InputTokens, e
 		}},
 		{"native_responses_buffered", false, func(resp *http.Response, c *gin.Context) (int, error) {
-			r, e := openai.handleResponsesBufferedFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now(), mapping)
+			r, e := openai.handleResponsesBufferedFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now(), mapping, false)
 			if r == nil {
 				return 0, e
 			}
 			return r.Usage.InputTokens, e
 		}},
 		{"native_cc_stream", true, func(resp *http.Response, c *gin.Context) (int, error) {
-			r, e := openai.handleCCStreamingFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now())
+			r, e := openai.handleCCStreamingFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now(), false)
 			if r == nil {
 				return 0, e
 			}
 			return r.Usage.InputTokens, e
 		}},
 		{"native_responses_stream", true, func(resp *http.Response, c *gin.Context) (int, error) {
-			r, e := openai.handleResponsesStreamingFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now(), mapping)
+			r, e := openai.handleResponsesStreamingFromNativeAnthropic(resp, c, "m", "m", "m", nil, time.Now(), mapping, false)
 			if r == nil {
 				return 0, e
 			}
