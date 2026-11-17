@@ -7,14 +7,35 @@ import (
 )
 
 const (
-	droidEnvironmentNotice = "You have been invoked in the following environment"
-	droidCompactionNotice  = "The conversation history before this point was compacted into the following summary:"
+	droidEnvironmentNotice  = "You have been invoked in the following environment"
+	droidCompactionNotice   = "The conversation history before this point was compacted into the following summary:"
+	droidClaudeCodeIdentity = "You are Claude Code, Anthropic's official CLI for Claude"
+	droidContinuationNotice = "This session is being continued from a previous conversation that ran out of context."
+	droidModelNameNotice    = "You are powered by the model named"
+	droidModelIDNotice      = "The exact model ID is"
+	droidTaskTrackingNotice = "If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done)."
+	droidTaskTrackingText   = "If tracking task progress would help, use TaskCreate for new tasks and TaskUpdate for status changes (in_progress when starting, completed when done)."
+	droidHookSetupNotice    = `Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them.`
+	droidHookSetupText      = `Use hooks in settings.json for recurring or event-triggered actions ("from now on when X", "each time X", "whenever X", "before/after X"). These actions are run by the harness; storing a memory or preference does not configure a hook.`
+)
+
+var droidPromptNoticeReplacer = strings.NewReplacer(
+	droidEnvironmentNotice+":", "",
+	droidEnvironmentNotice, "",
+	droidCompactionNotice, "[Conversation summary]",
+	droidClaudeCodeIdentity, "You are Claude Code",
+	droidContinuationNotice, "[Conversation summary]",
+	droidModelNameNotice, "Selected model:",
+	droidModelIDNotice, "Model ID:",
+	droidTaskTrackingNotice, droidTaskTrackingText,
+	droidHookSetupNotice, droidHookSetupText,
 )
 
 // Factory rejects these fixed preambles even in quoted diagnostic output.
-// Normalize only ordinary prompt text, retaining environment details and the
-// full compaction summary. Never rewrite tool arguments, signatures, encrypted
-// reasoning, schemas, metadata, or multimodal data.
+// Normalize only ordinary prompt text, retaining environment details, model
+// identifiers, task instructions, and the full compaction summary. Never rewrite
+// tool arguments, signatures, encrypted reasoning, schemas, metadata, or
+// multimodal data.
 func normalizeDroidPromptNotice(fields map[string]json.RawMessage, protocol string) {
 	switch protocol {
 	case APIProtocolAnthropic:
@@ -44,13 +65,14 @@ func normalizeDroidPromptField(fields map[string]json.RawMessage, name string, s
 
 func normalizeDroidPromptText(raw json.RawMessage) json.RawMessage {
 	var text string
-	if json.Unmarshal(raw, &text) != nil ||
-		(!strings.Contains(text, droidEnvironmentNotice) && !strings.Contains(text, droidCompactionNotice)) {
+	if json.Unmarshal(raw, &text) != nil {
 		return raw
 	}
-	text = strings.ReplaceAll(text, droidEnvironmentNotice+":", "")
-	text = strings.ReplaceAll(text, droidEnvironmentNotice, "")
-	text = strings.ReplaceAll(text, droidCompactionNotice, "[Conversation summary]")
+	normalized := droidPromptNoticeReplacer.Replace(text)
+	if normalized == text {
+		return raw
+	}
+	text = normalized
 	if strings.TrimSpace(text) == "" {
 		// Anthropic text blocks must be nonempty. Retain a neutral heading if
 		// the entire block was only the removed preamble.

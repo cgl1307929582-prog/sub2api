@@ -27,6 +27,36 @@ func TestDroidPromptNoticesInPromptAndToolResults(t *testing.T) {
 			"The conversation history before this point was compacted into the following summary:" + summary,
 			"[Conversation summary]" + summary,
 		},
+		{
+			"claude_code_identity", droidClaudeCodeIdentity,
+			droidClaudeCodeIdentity + ", running within the Claude Agent SDK.\n",
+			"You are Claude Code, running within the Claude Agent SDK.\n",
+		},
+		{
+			"continuation", droidContinuationNotice,
+			droidContinuationNotice + " The summary below covers the earlier portion of the conversation." + summary,
+			"[Conversation summary] The summary below covers the earlier portion of the conversation." + summary,
+		},
+		{
+			"model_name", droidModelNameNotice,
+			droidModelNameNotice + " Opus 4.6 (1M context). Assistant knowledge cutoff is May 2025.",
+			"Selected model: Opus 4.6 (1M context). Assistant knowledge cutoff is May 2025.",
+		},
+		{
+			"model_id", droidModelIDNotice,
+			droidModelIDNotice + " claude-opus-4-6[1m].",
+			"Model ID: claude-opus-4-6[1m].",
+		},
+		{
+			"task_tracking", droidTaskTrackingNotice,
+			droidTaskTrackingNotice + "\n#1. [in_progress] Keep this task\n<total_tokens>15000000 tokens left</total_tokens>",
+			droidTaskTrackingText + "\n#1. [in_progress] Keep this task\n<total_tokens>15000000 tokens left</total_tokens>",
+		},
+		{
+			"hook_setup", droidHookSetupNotice,
+			"- update-config: " + droidHookSetupNotice + " Keep the remaining skill instructions.",
+			"- update-config: " + droidHookSetupText + " Keep the remaining skill instructions.",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testDroidPromptNoticeLocations(t, tc.notice, tc.text, tc.want)
@@ -44,6 +74,7 @@ func testDroidPromptNoticeLocations(t *testing.T, notice, text, want string) {
 		{"messages_system_string", APIProtocolAnthropic, `{"system":` + string(quoted) + `}`, "system"},
 		{"messages_system_block", APIProtocolAnthropic, `{"system":[{"type":"text","text":` + string(quoted) + `,"cache_control":{"type":"ephemeral"}}]}`, "system.1.text"},
 		{"messages_user", APIProtocolAnthropic, `{"messages":[{"role":"user","content":` + string(quoted) + `}]}`, "messages.0.content"},
+		{"messages_inline_system", APIProtocolAnthropic, `{"messages":[{"role":"system","content":` + string(quoted) + `}]}`, "messages.0.content"},
 		{"messages_tool_string", APIProtocolAnthropic, `{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":` + string(quoted) + `}]}]}`, "messages.0.content.0.content"},
 		{"messages_tool_block", APIProtocolAnthropic, `{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":` + string(quoted) + `,"cache_control":{"type":"ephemeral"}}]}]}]}`, "messages.0.content.0.content.0.text"},
 		{"responses_instructions", APIProtocolResponses, `{"instructions":` + string(quoted) + `}`, "instructions"},
@@ -77,6 +108,12 @@ func TestDroidPromptNoticesPreserveStructuredAndSignedFields(t *testing.T) {
 	for _, tc := range []struct{ name, notice, replacement string }{
 		{"environment", "You have been invoked in the following environment:", ""},
 		{"compaction", "The conversation history before this point was compacted into the following summary:", "[Conversation summary]"},
+		{"claude_code_identity", droidClaudeCodeIdentity, "You are Claude Code"},
+		{"continuation", droidContinuationNotice, "[Conversation summary]"},
+		{"model_name", droidModelNameNotice, "Selected model:"},
+		{"model_id", droidModelIDNotice, "Model ID:"},
+		{"task_tracking", droidTaskTrackingNotice, droidTaskTrackingText},
+		{"hook_setup", droidHookSetupNotice, droidHookSetupText},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testDroidPromptPreservesStructuredFields(t, tc.notice, tc.replacement)
@@ -86,8 +123,11 @@ func TestDroidPromptNoticesPreserveStructuredAndSignedFields(t *testing.T) {
 
 func testDroidPromptPreservesStructuredFields(t *testing.T, notice, replacement string) {
 	t.Helper()
+	quotedNotice, err := json.Marshal(notice)
+	require.NoError(t, err)
+	escapedNotice := string(quotedNotice[1 : len(quotedNotice)-1])
 	payload := `{"model":"claude-opus-5-5","system":[{"type":"text","text":"# Environment\nYou have been invoked in the following environment:\nkeep this","cache_control":{"type":"ephemeral"}}],"metadata":{"user_id":"You have been invoked in the following environment:"},"tools":[{"name":"lookup","description":"You have been invoked in the following environment:","input_schema":{"type":"object","maximum":9007199254740993}}],"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"You have been invoked in the following environment:","signature":"keep-signature"},{"type":"redacted_thinking","data":"signed-data"},{"type":"tool_use","id":"call_1","name":"lookup","input":{"query":"You have been invoked in the following environment:","number":9007199254740993}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","is_error":true,"content":[{"type":"text","text":"before You have been invoked in the following environment: after","cache_control":{"type":"ephemeral"}},{"type":"image","source":{"type":"url","url":"https://example.com/image.png"}},{"type":"document","source":{"type":"text","media_type":"text/plain","data":"You have been invoked in the following environment:"}}]}]}]}`
-	payload = strings.ReplaceAll(payload, "You have been invoked in the following environment:", notice)
+	payload = strings.ReplaceAll(payload, "You have been invoked in the following environment:", escapedNotice)
 	out, err := prepareDroidBody([]byte(payload), APIProtocolAnthropic)
 	require.NoError(t, err)
 	require.Equal(t, "before "+replacement+" after", gjson.GetBytes(out, "messages.1.content.0.content.0.text").String())
@@ -110,7 +150,11 @@ func testDroidPromptPreservesStructuredFields(t *testing.T, notice, replacement 
 		{APIProtocolResponses, `{"input":[{"type":"function_call","name":"lookup","arguments":"{\"text\":\"You have been invoked in the following environment:\"}"},{"type":"reasoning","encrypted_content":"signed-data","summary":[{"type":"summary_text","text":"You have been invoked in the following environment:"}]}]}`, "input"},
 		{APIProtocolChatCompletions, `{"messages":[{"role":"assistant","content":null,"reasoning_content":"You have been invoked in the following environment:","tool_calls":[{"type":"function","function":{"name":"lookup","arguments":"{\"text\":\"You have been invoked in the following environment:\"}"}}]}]}`, "messages.1"},
 	} {
-		tc.payload = strings.ReplaceAll(tc.payload, "You have been invoked in the following environment:", notice)
+		// Function arguments contain a second JSON document encoded as a string.
+		nestedNotice, err := json.Marshal(escapedNotice)
+		require.NoError(t, err)
+		tc.payload = strings.ReplaceAll(tc.payload, `\"You have been invoked in the following environment:\"`, `\"`+string(nestedNotice[1:len(nestedNotice)-1])+`\"`)
+		tc.payload = strings.ReplaceAll(tc.payload, "You have been invoked in the following environment:", escapedNotice)
 		out, err = prepareDroidBody([]byte(tc.payload), tc.protocol)
 		require.NoError(t, err)
 		originalPath := "input"
