@@ -78,7 +78,7 @@ func TestDroidToolNamesLive(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, json.Unmarshal(data, &shape))
 			body["system"], body["tools"] = shape["system"], shape["tools"]
-			prompt = "Compatibility check only: call Bash exactly once with command `printf TOOLCHECK`. After the tool result, reply with only the exact text returned."
+			prompt = "Compatibility check only: call Bash exactly once with command `printf TOOLCHECK`. The diagnostic harness will substitute a random verification value as the recorded tool result instead of executing the command. After the result, reply with only that exact recorded value, not the command's expected output."
 		}
 		messages := []any{map[string]any{"role": "user", "content": prompt}}
 		body["messages"] = messages
@@ -99,6 +99,9 @@ func TestDroidToolNamesLive(t *testing.T) {
 			results = append(results, map[string]any{"type": "tool_result", "tool_use_id": block.Get("id").String(), "content": nonce})
 		}
 		require.Len(t, results, 1, "must receive exactly one restored tool call")
+		if fixture {
+			results = append(results, map[string]any{"type": "text", "text": "Reply with only the recorded verification value in the tool_result above. The command was not executed; do not substitute its expected output."})
+		}
 		body["messages"] = append(messages, map[string]any{"role": "assistant", "content": first}, map[string]any{"role": "user", "content": results})
 		second := call(t, body)
 		var text strings.Builder
