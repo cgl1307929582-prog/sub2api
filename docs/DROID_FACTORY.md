@@ -29,6 +29,16 @@ Pi 压缩对话后添加的固定开场白 `The conversation history before this
 
 同日摘要兼容处理另通过实际网关代码完成 6 次真实请求：Messages、Responses、Chat 的摘要输入，Messages system、tool_result，以及同时含环境提示与摘要开场白的输入，均返回 HTTP 200、对应协议的完整成功终态和摘要中的校验码。单元回归逐字核对摘要正文、Unicode、换行及标签，并覆盖其他渠道、原始请求与签名/结构化字段不变。
 
+## 客户端工具名称兼容
+
+2026-11-18 的同账号对照中，以下 10 个客户端工具名单独放入 `tools[].name`、搭配中性描述和普通提问，也触发 Factory 的 `403 content_policy_rejected`：`Agent`、`Bash`、`EnterPlanMode`、`ExitPlanMode`、`NotebookEdit`、`TaskCreate`、`TaskGet`、`TaskList`、`TaskUpdate`、`Write`。仅更换工具名称可恢复请求；上游未公开完整匹配规则。
+
+Droid 出站层将这 10 个名称映射为确定性的内部别名，处理声明、指定工具选择以及已有历史中的工具调用/引用，并在 JSON 和 SSE 响应中恢复客户端原名。别名与调用者工具名称冲突时自动避让。Messages、Responses、Chat Completions 和经 Chat 转换的 Gemini 共用该逻辑；非 Droid 渠道不启用。
+
+客户端无需改工具注册或重建会话。映射只编辑结构化名称字段，保留工具描述、参数 schema、调用参数、调用 ID、结果正文、缓存标记和思考签名。Chat SSE 的工具名被拆成多片时，收齐名称后再发出工具开始事件，后续参数按原顺序转发；普通完整事件即时转发。流式缓冲有大小上限，断流或上游错误不会伪造成功终态。
+
+回归入口为 `go test -tags=unit ./internal/service -run TestDroidToolName`。可选的真实请求测试使用 `droidlive` 标签和仓库外的 `DROID_LIVE_CONFIG` JSON 文件（`base_url` 为 Factory 主机，`credentials.api_key`、可选 `proxy_url`）；测试仅返回随机校验值，不执行模型产生的命令。该测试会消耗上游额度，凭据文件不可提交。
+
 ## 路由与模型
 
 | 上游模型族 | Factory 路径 | X-API-Provider | 首选入站 |

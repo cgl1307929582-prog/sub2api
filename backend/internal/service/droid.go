@@ -115,6 +115,14 @@ func prepareDroidRequest(request *http.Request, account *Account) (*http.Request
 	if err != nil {
 		return nil, err
 	}
+	payload, toolNames, err := prepareDroidToolNames(payload, protocol)
+	if err != nil {
+		return nil, err
+	}
+	if toolNames == nil {
+		// A transport retry may already carry the prepared wire body.
+		toolNames, _ = request.Context().Value(droidToolNamesKey{}).(*droidToolNames)
+	}
 	if provider == "mistral" {
 		payload, err = prepareDroidMistralBody(payload)
 		if err != nil {
@@ -127,7 +135,7 @@ func prepareDroidRequest(request *http.Request, account *Account) (*http.Request
 			return nil, err
 		}
 	}
-	out := request.Clone(WithHTTPUpstreamRedirectsDisabled(request.Context()))
+	out := request.Clone(withDroidToolNames(WithHTTPUpstreamRedirectsDisabled(request.Context()), toolNames))
 	if provider == "google" {
 		out.URL.Path = droidGooglePath
 	}
@@ -333,6 +341,9 @@ func droidRoundTrip(request *http.Request, account *Account, send func(*http.Req
 	if response.StatusCode == http.StatusOK {
 		response, err = adaptDroidChatResponse(request, prepared, response)
 		if err != nil {
+			return nil, safeDroidError(err)
+		}
+		if err := restoreDroidToolNamesResponse(prepared, response); err != nil {
 			return nil, safeDroidError(err)
 		}
 	}
