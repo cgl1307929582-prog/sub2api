@@ -20,6 +20,8 @@ const (
 )
 
 var droidPromptNoticeReplacer = strings.NewReplacer(
+	droidClaudeCodeIdentity+", running within the Claude Agent SDK.", "You are Claude Code. Running within the Claude Agent SDK.",
+	"You are Claude Code, running within the Claude Agent SDK.", "You are Claude Code. Running within the Claude Agent SDK.",
 	droidEnvironmentNotice+":", "",
 	droidEnvironmentNotice, "",
 	droidCompactionNotice, "[Conversation summary]",
@@ -37,6 +39,7 @@ var droidPromptNoticeReplacer = strings.NewReplacer(
 // tool arguments, signatures, encrypted reasoning, schemas, metadata, or
 // multimodal data.
 func normalizeDroidPromptNotice(fields map[string]json.RawMessage, protocol string) {
+	normalizeDroidPromptField(fields, "tools", normalizeDroidWidgetToolDescription)
 	switch protocol {
 	case APIProtocolAnthropic:
 		normalizeDroidPromptField(fields, "system", normalizeDroidPromptContent)
@@ -160,5 +163,46 @@ func normalizeDroidPromptMessages(raw json.RawMessage) json.RawMessage {
 		return raw
 	}
 	cleaned, _ := json.Marshal(messages)
+	return cleaned
+}
+
+// Normalize only the exact Desktop widget description rejected by Factory.
+// The tool name, input schema, permissions, and all other descriptions survive.
+const droidWidgetDescription = "Read context from an embedded interactive widget. Widgets are rendered alongside chat from prior tool calls and can be interacted with by the user. Call this when you need to know the current state of a widget."
+const droidWidgetDescriptionText = "Get the current state of an embedded interactive widget. These widgets appear next to chat after earlier tool calls and the user can interact with them. Use this tool to inspect a widget's current state."
+
+func normalizeDroidWidgetToolDescription(raw json.RawMessage) json.RawMessage {
+	var tools []json.RawMessage
+	if json.Unmarshal(raw, &tools) != nil {
+		return raw
+	}
+	changed := false
+	for i, tool := range tools {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(tool, &fields) != nil {
+			continue
+		}
+		definition := fields
+		var nested map[string]json.RawMessage
+		if f, ok := fields["function"]; ok && json.Unmarshal(f, &nested) == nil && nested != nil {
+			definition = nested
+		}
+		var name, description string
+		_ = json.Unmarshal(definition["name"], &name)
+		_ = json.Unmarshal(definition["description"], &description)
+		if name != "mcp__ccd_session__read_widget_context" || description != droidWidgetDescription {
+			continue
+		}
+		definition["description"], _ = json.Marshal(droidWidgetDescriptionText)
+		if nested != nil {
+			fields["function"], _ = json.Marshal(nested)
+		}
+		tools[i], _ = json.Marshal(fields)
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	cleaned, _ := json.Marshal(tools)
 	return cleaned
 }

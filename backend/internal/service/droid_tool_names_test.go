@@ -17,7 +17,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestDroidToolNamesAllTenPreserveHistoryAndArguments(t *testing.T) {
+func TestDroidToolNamesPreserveHistoryAndArguments(t *testing.T) {
 	for _, name := range droidClientToolNames {
 		t.Run(name, func(t *testing.T) {
 			payload := fmt.Sprintf(`{"tools":[{"name":%q,"description":"Bash is literal prose","input_schema":{"type":"object","properties":{"name":{"const":"Bash"}},"maximum":9007199254740993},"cache_control":{"type":"ephemeral","ttl":"1h"}}],"tool_choice":{"type":"tool","name":%q},"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"Bash","signature":"keep-signed-Bash"},{"type":"tool_use","id":"call_Bash","name":%q,"input":{"name":"Bash","large":9007199254740993}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_Bash","content":[{"type":"text","text":"Bash"},{"type":"tool_reference","tool_name":%q}]}]}],"metadata":{"name":"Bash"}}`, name, name, name, name)

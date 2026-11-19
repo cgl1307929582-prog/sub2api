@@ -19,6 +19,7 @@ import (
 var droidClientToolNames = [...]string{
 	"Agent", "Bash", "EnterPlanMode", "ExitPlanMode", "NotebookEdit",
 	"TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Write",
+	"EnterWorktree", "ExitWorktree",
 }
 
 type droidToolNamesKey struct{}

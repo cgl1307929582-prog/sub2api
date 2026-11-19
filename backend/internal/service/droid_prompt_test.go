@@ -30,7 +30,12 @@ func TestDroidPromptNoticesInPromptAndToolResults(t *testing.T) {
 		{
 			"claude_code_identity", droidClaudeCodeIdentity,
 			droidClaudeCodeIdentity + ", running within the Claude Agent SDK.\n",
+			"You are Claude Code. Running within the Claude Agent SDK.\n",
+		},
+		{
+			"normalized_sdk_identity", "You are Claude Code, running within the Claude Agent SDK.",
 			"You are Claude Code, running within the Claude Agent SDK.\n",
+			"You are Claude Code. Running within the Claude Agent SDK.\n",
 		},
 		{
 			"continuation", droidContinuationNotice,
@@ -229,5 +234,26 @@ func TestDroidPromptNoticesOnlyChangeFactoryOutboundCopy(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, payload, string(original))
 		})
+	}
+}
+
+func TestDroidWidgetDescriptionPreservesSchemaAndUnrelatedTools(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		definition := map[string]any{"name": "mcp__ccd_session__read_widget_context", "description": droidWidgetDescription, "input_schema": map[string]any{"type": "object", "properties": map[string]any{"tool_name": map[string]any{"type": "string", "description": droidWidgetDescription}}, "required": []string{"tool_name"}}}
+		var tool any = definition
+		if nested {
+			tool = map[string]any{"type": "function", "function": definition}
+		}
+		original, err := json.Marshal([]any{tool, map[string]any{"name": "other", "description": droidWidgetDescription}})
+		require.NoError(t, err)
+		out := normalizeDroidWidgetToolDescription(original)
+		path := "0"
+		if nested {
+			path += ".function"
+		}
+		require.Equal(t, droidWidgetDescriptionText, gjson.GetBytes(out, path+".description").String())
+		require.Equal(t, gjson.GetBytes(original, path+".input_schema").Raw, gjson.GetBytes(out, path+".input_schema").Raw)
+		require.Equal(t, gjson.GetBytes(original, "1").Raw, gjson.GetBytes(out, "1").Raw)
+		require.Equal(t, out, normalizeDroidWidgetToolDescription(out))
 	}
 }
